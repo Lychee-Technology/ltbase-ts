@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "target": "esnext",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "lib": ["ES2021", "DOM", "DOM.Iterable"],
+    "types": ["node"],
+    "outDir": "dist"
+  },
+  "include": ["src"]
+}
