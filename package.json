@@ -9,7 +9,7 @@
     "cli": "bun run src/cli.ts"
   },
   "devDependencies": {
-    "@types/node": "^22.7.4",
-    "typescript": "^5.3.3"
+    "@types/node": "^24.10.1",
+    "typescript": "^5.9.3"
   }
 }
