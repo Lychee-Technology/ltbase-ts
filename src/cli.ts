@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { CommandHandler } from './commands/commandHandler';
 import { ApiClient } from './api/client';
 import { AuthSigner } from './auth/signer';
@@ -12,6 +13,8 @@ interface ParsedArgs {
 
 const COMMANDS = new Set([
   'deepping',
+  'create-activity',
+  'list-activities',
   'create-note',
   'get-note',
   'list-notes',
@@ -88,6 +91,16 @@ function parseNumberParam(params: Record<string, ArgValue>, key: string): number
   return num;
 }
 
+function requireEnum<T extends string>(
+  params: Record<string, ArgValue>,
+  key: string,
+  allowed: readonly T[],
+): T {
+  const value = requiredString(params, key);
+  if (allowed.includes(value as T)) return value as T;
+  throw new Error(`Invalid value for --${key}. Allowed: ${allowed.join(', ')}`);
+}
+
 function normalizeKey(key: string): string {
   if (key === 'h') return 'help';
   if (key === 'v') return 'verbose';
@@ -110,6 +123,8 @@ Global options:
 
 Commands:
   deepping               [--echo <text>]
+  create-activity        --type <call|line|email|visit|note> --direction <inbound|outbound> --user-id <id> --summary <text> [--id <id>] [--at <iso>] [--next-follow-up-at <iso>] [--lead-id <id>]
+  list-activities        [--user-id <id>] [--lead-id <id>] [--page N] [--items-per-page N]
   create-note            --owner-id <id> --type <mime> [--data <text>|--file <path>] [--role <role>]
   get-note               --owner-id <id> --note-id <uuid>
   list-notes             --owner-id <id> [--page N] [--items-per-page N] [--schema-name name] [--summary text]
@@ -141,6 +156,31 @@ async function main() {
         const result = await handler.deepping(optionalString(params, 'echo'));
         console.log('✓ DeepPing successful');
         console.log(JSON.stringify(result, null, 2));
+        break;
+      }
+      case 'create-activity': {
+        const payload = await handler.createActivity({
+          id: optionalString(params, 'id') ?? randomUUID(),
+          type: requireEnum(params, 'type', ['call', 'line', 'email', 'visit', 'note']),
+          direction: requireEnum(params, 'direction', ['inbound', 'outbound']),
+          at: optionalString(params, 'at') ?? new Date().toISOString(),
+          userId: requiredString(params, 'user-id'),
+          summary: requiredString(params, 'summary'),
+          nextFollowUpAt: optionalString(params, 'next-follow-up-at'),
+          leadId: optionalString(params, 'lead-id'),
+        });
+        console.log('✓ Activity created');
+        console.log(JSON.stringify(payload, null, 2));
+        break;
+      }
+      case 'list-activities': {
+        const payload = await handler.listActivities({
+          userId: optionalString(params, 'user-id'),
+          leadId: optionalString(params, 'lead-id'),
+          page: parseNumberParam(params, 'page'),
+          itemsPerPage: parseNumberParam(params, 'items-per-page'),
+        });
+        console.log(JSON.stringify(payload, null, 2));
         break;
       }
       case 'create-note': {
@@ -196,7 +236,7 @@ async function main() {
         printUsage();
     }
   } catch (err) {
-    console.error(`Error: ${(err as Error).message}`);
+    console.error(`Error: ${(err as Error).message}`, `${(err as Error).stack}`);
     process.exitCode = 1;
   }
 }

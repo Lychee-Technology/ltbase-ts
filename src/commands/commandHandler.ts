@@ -1,6 +1,17 @@
 import { readFile } from 'node:fs/promises';
 import { ApiClient, ApiResponse, QueryParams } from '../api/client';
 
+export interface CreateActivityOptions {
+  id: string;
+  type: 'call' | 'line' | 'email' | 'visit' | 'note';
+  direction: 'inbound' | 'outbound';
+  at: string;
+  userId: string;
+  summary: string;
+  nextFollowUpAt?: string;
+  leadId?: string;
+}
+
 export interface CreateNoteOptions {
   ownerId: string;
   type: string;
@@ -17,6 +28,13 @@ export interface ListNotesOptions {
   summary?: string;
 }
 
+export interface ListActivitiesOptions {
+  userId?: string;
+  leadId?: string;
+  page?: number;
+  itemsPerPage?: number;
+}
+
 export class CommandHandler {
   private readonly client: ApiClient;
 
@@ -24,9 +42,16 @@ export class CommandHandler {
     this.client = client;
   }
 
+  async createActivity(options: CreateActivityOptions) {
+    const response = await this.client.post('/api/v1/activity', options);
+    this.assertSuccess(response, 'Failed to create activity');
+    return response.json();
+  }
+
   async deepping(echo?: string) {
     const params: QueryParams | undefined = echo ? { echo } : undefined;
     const response = await this.client.get('/api/v1/deepping', params);
+    console.log('DeepPing response status:', response.status);
     this.assertSuccess(response, 'DeepPing failed');
     return response.json();
   }
@@ -76,6 +101,18 @@ export class CommandHandler {
   async deleteNote(noteId: string) {
     const response = await this.client.delete(`/api/ai/v1/notes/${noteId}`);
     this.assertSuccess(response, 'Failed to delete note');
+    return response.json();
+  }
+
+  async listActivities(options: ListActivitiesOptions = {}) {
+    const params: QueryParams = {};
+    if (options.page !== undefined) params.page = options.page;
+    if (options.itemsPerPage !== undefined) params.items_per_page = options.itemsPerPage;
+    if (options.userId) params.user_id = options.userId;
+    if (options.leadId) params.lead_id = options.leadId;
+
+    const response = await this.client.get('/api/v1/activity', params);
+    this.assertSuccess(response, 'Failed to list activities');
     return response.json();
   }
 
