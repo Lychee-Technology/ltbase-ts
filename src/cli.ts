@@ -15,6 +15,8 @@ const COMMANDS = new Set([
   'deepping',
   'create-activity',
   'list-activities',
+  'list-leads',
+  'update-lead',
   'create-note',
   'get-note',
   'list-notes',
@@ -125,6 +127,8 @@ Commands:
   deepping               [--echo <text>]
   create-activity        --type <call|line|email|visit|note> --direction <inbound|outbound> --user-id <id> --summary <text> [--id <id>] [--at <iso>] [--next-follow-up-at <iso>] [--lead-id <id>]
   list-activities        [--user-id <id>] [--lead-id <id>] [--page N] [--items-per-page N]
+  list-leads             [--page N] [--items-per-page N]
+  update-lead            --lead-id <uuid> --file <path>
   create-note            --owner-id <id> --type <mime> [--data <text>|--file <path>] [--role <role>]
   get-note               --owner-id <id> --note-id <uuid>
   list-notes             --owner-id <id> [--page N] [--items-per-page N] [--schema-name name] [--summary text]
@@ -211,6 +215,23 @@ async function main() {
           schemaName: optionalString(params, 'schema-name'),
           summary: optionalString(params, 'summary'),
         });
+        console.log(JSON.stringify(payload, null, 2));
+        break;
+      }
+      case 'list-leads': {
+        const payload = await handler.listLeads({
+          page: parseNumberParam(params, 'page'),
+          itemsPerPage: parseNumberParam(params, 'items-per-page'),
+        });
+        console.log(JSON.stringify(payload, null, 2));
+        break;
+      }
+      case 'update-lead': {
+        const payload = await handler.updateLead({
+          leadId: requiredString(params, 'lead-id'),
+          filePath: requiredString(params, 'file'),
+        });
+        console.log('✓ Lead updated');
         console.log(JSON.stringify(payload, null, 2));
         break;
       }

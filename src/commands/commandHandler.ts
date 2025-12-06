@@ -20,19 +20,30 @@ export interface CreateNoteOptions {
   role?: string;
 }
 
-export interface ListNotesOptions {
-  ownerId?: string;
+export interface ListObjectsOptions {
   page?: number;
   itemsPerPage?: number;
+}
+
+
+export interface ListNotesOptions extends ListObjectsOptions {
+  ownerId?: string;
   schemaName?: string;
   summary?: string;
 }
 
-export interface ListActivitiesOptions {
+export interface ListActivitiesOptions extends ListObjectsOptions {
   userId?: string;
   leadId?: string;
-  page?: number;
-  itemsPerPage?: number;
+}
+
+export interface ListLeadsOptions extends ListObjectsOptions {
+  leadId?: string;
+}
+
+export interface UpdateLeadOptions {
+  leadId: string;
+  filePath: string;
 }
 
 export class CommandHandler {
@@ -82,12 +93,21 @@ export class CommandHandler {
     const params: QueryParams = {};
     if (options.page !== undefined) params.page = options.page;
     if (options.itemsPerPage !== undefined) params.items_per_page = options.itemsPerPage;
-    if (options.ownerId) params.owner_id = options.ownerId;
     if (options.schemaName) params.schema_name = options.schemaName;
     if (options.summary) params.summary = options.summary;
 
     const response = await this.client.get('/api/ai/v1/notes', params);
     this.assertSuccess(response, 'Failed to list notes');
+    return response.json();
+  }
+
+  async listLeads(options: ListLeadsOptions = {}) {
+    const params: QueryParams = {};
+    if (options.page !== undefined) params.page = options.page;
+    if (options.itemsPerPage !== undefined) params.items_per_page = options.itemsPerPage;
+
+    const response = await this.client.get('/api/v1/lead', params);
+    this.assertSuccess(response, 'Failed to list lead');
     return response.json();
   }
 
@@ -113,6 +133,25 @@ export class CommandHandler {
 
     const response = await this.client.get('/api/v1/activity', params);
     this.assertSuccess(response, 'Failed to list activities');
+    return response.json();
+  }
+
+  async updateLead(options: UpdateLeadOptions) {
+    const { leadId, filePath } = options;
+
+    const fileContent = await readFile(filePath, 'utf8').catch((err) => {
+      throw new Error(`Failed to read JSON file "${filePath}": ${(err as Error).message}`);
+    });
+
+    let payload: unknown;
+    try {
+      payload = JSON.parse(fileContent);
+    } catch (err) {
+      throw new Error(`Invalid JSON in file "${filePath}": ${(err as Error).message}`);
+    }
+
+    const response = await this.client.put(`/api/v1/lead/${leadId}`, payload);
+    this.assertSuccess(response, 'Failed to update lead');
     return response.json();
   }
 

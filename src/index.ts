@@ -4,5 +4,7 @@ export {
   CommandHandler,
   CreateActivityOptions,
   CreateNoteOptions,
+  ListLeadsOptions,
   ListNotesOptions,
+  UpdateLeadOptions,
 } from './commands/commandHandler';

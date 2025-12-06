@@ -1,0 +1,15 @@
+{
+    "updatedAt": "2025-12-05T02:52:33.220Z",
+    "temperature": "New",
+    "status": "open",
+    "stage": "new",
+    "contact": {
+        "name": "Nick Cheng",
+        "preferredChannel": "phone",
+        "primaryPhone": "07026316822",
+        "phones": [
+            "07026316822"
+        ],
+        "nameNative": "程雅男-Nick Cheng"
+    }
+}
