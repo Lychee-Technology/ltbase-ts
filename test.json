@@ -1,0 +1,90 @@
+{
+  "items": [
+    {
+      "note_id": "d7f0ab97-0527-4f76-bcf1-d821dc6de627",
+      "owner_id": "user123",
+      "created_at": 1764853364080,
+      "updated_at": 1764853364080,
+      "type": "text/plain",
+      "data": "明天带Jim去看房",
+      "summary": "明天带Jim去看房"
+    },
+    {
+      "note_id": "b3761e41-7def-403c-916c-ea3fc00fd7c9",
+      "owner_id": "user123",
+      "created_at": 1764807382824,
+      "updated_at": 1764807382824,
+      "type": "text/plain",
+      "data": "明天带Jim去看房",
+      "summary": "明天带Jim去看房"
+    },
+    {
+      "note_id": "3008a646-23fe-4344-a1f8-015edd70dd81",
+      "owner_id": "user123",
+      "created_at": 1764807362155,
+      "updated_at": 1764807362155,
+      "type": "text/plain",
+      "data": "明天带Jim去看房",
+      "summary": "明天带Jim去看房"
+    },
+    {
+      "note_id": "e7bc0eac-dcdf-4bbc-9d6e-24ea89ce1442",
+      "owner_id": "user123",
+      "created_at": 1764465227893,
+      "updated_at": 1764465227893,
+      "type": "image/jpeg",
+      "data": "data:image/jpeg;base64,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",
+      "summary": "白色佳能打印机，带SD卡槽，状况良好。",
+      "s3_key": "isysgdgyhf/user123/e7bc0eac-dcdf-4bbc-9d6e-24ea89ce1442"
+    },
+    {
+      "note_id": "93556c68-e042-4af6-8e8a-829572e5482f",
+      "owner_id": "user123",
+      "created_at": 1764392384992,
+      "updated_at": 1764392384992,
+      "type": "image/webp",
+      "data": "",
+      "summary": "Image analysis complete. No discernible text found. Generating note in Chinese.\n\n两位亚洲男性，其中一位戴眼镜，另一位在后面。",
+      "s3_key": "isysgdgyhf/user123/93556c68-e042-4af6-8e8a-829572e5482f"
+    },
+    {
+      "note_id": "58e5c499-b7ec-4b9d-9e3d-5399ed697f06",
+      "owner_id": "user123",
+      "created_at": 1764371159862,
+      "updated_at": 1764371159862,
+      "type": "text/plain",
+      "data": "明天带Jim去看房",
+      "summary": "明天带Jim去看房"
+    },
+    {
+      "note_id": "8808a9c2-a9aa-4d9f-ac05-01fe4d92131d",
+      "owner_id": "user123",
+      "created_at": 1764370680213,
+      "updated_at": 1764370680213,
+      "type": "text/plain",
+      "data": "明天带Jim去看房",
+      "summary": "明天带Jim去看房"
+    },
+    {
+      "note_id": "c7aeedba-f64b-4424-ad94-6c0a96476fad",
+      "owner_id": "user123",
+      "created_at": 1763597048203,
+      "updated_at": 1763597048203,
+      "type": "text/plain",
+      "data": "明天带Jim去看房",
+      "summary": "明天带Jim去看房"
+    },
+    {
+      "note_id": "31d79036-6fac-4e20-94b7-53e5bab8fb7f",
+      "owner_id": "user123",
+      "created_at": 1763361657652,
+      "updated_at": 1763361933421,
+      "type": "text/plain",
+      "data": "明天带Jim去看房",
+      "summary": "Test update API"
+    }
+  ],
+  "page": 1,
+  "items_per_page": 20,
+  "total_items": 9
+}

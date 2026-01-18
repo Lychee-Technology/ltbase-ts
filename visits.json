@@ -1,0 +1,195 @@
+{
+  "data": [
+    {
+      "schema_name": "visit",
+      "row_id": "019b0893-6347-77d4-ba45-19feaf63413a",
+      "attributes": {
+        "contactSnapshot": {
+          "name": "Lei Zhang",
+          "nameNative": "张磊",
+          "phones": [
+            "0123"
+          ],
+          "preferredChannel": "phone",
+          "primaryPhone": "0123"
+        },
+        "id": "0f292fa9-bb9b-468b-92e6-8741a1523ba5",
+        "leadId": "9889e560-5064-49bc-8ce7-6bb772328d7e",
+        "propertySnapshot": {
+          "title": "大房子"
+        },
+        "scheduledEndAt": "2025-12-18T14:07:00Z",
+        "scheduledStartAt": "2025-12-18T02:03:00Z",
+        "status": "scheduled",
+        "userId": "demo-user-1"
+      }
+    },
+    {
+      "schema_name": "visit",
+      "row_id": "019b0894-140d-7789-b335-13b620750206",
+      "attributes": {
+        "contactSnapshot": {
+          "email": "abc@gmai.com",
+          "name": "田中由紀",
+          "nameKana": "ユキタナカ",
+          "phones": [
+            "09012345678"
+          ],
+          "preferredChannel": "wechat",
+          "primaryPhone": "09012345678"
+        },
+        "id": "ee272577-a392-4ffc-bcf0-bba8e691304a",
+        "leadId": "f418458d-b956-416f-9beb-edfa7f1fa42a",
+        "propertySnapshot": {
+          "title": "Giant House"
+        },
+        "scheduledEndAt": "2025-12-24T08:04:00Z",
+        "scheduledStartAt": "2025-12-24T06:04:00Z",
+        "status": "scheduled",
+        "userId": "demo-user-1"
+      }
+    },
+    {
+      "schema_name": "visit",
+      "row_id": "019b0894-9929-7ed0-bbd0-cccc5eaa3086",
+      "attributes": {
+        "contactSnapshot": {
+          "email": "abc@gmai.com",
+          "name": "田中由紀",
+          "nameKana": "ユキタナカ",
+          "phones": [
+            "09012345678"
+          ],
+          "preferredChannel": "wechat",
+          "primaryPhone": "09012345678"
+        },
+        "id": "e76451d0-a1bf-4a85-a3f2-0b045ef983e2",
+        "leadId": "f418458d-b956-416f-9beb-edfa7f1fa42a",
+        "propertySnapshot": {
+          "title": "Giant 2"
+        },
+        "scheduledEndAt": "2025-12-11T14:08:00Z",
+        "scheduledStartAt": "2025-12-11T02:05:00Z",
+        "status": "scheduled",
+        "userId": "demo-user-1"
+      }
+    },
+    {
+      "schema_name": "visit",
+      "row_id": "019b0895-46b7-70b9-aebc-4b0c9a2415ea",
+      "attributes": {
+        "contactSnapshot": {
+          "email": "abc@gmai.com",
+          "name": "田中由紀",
+          "nameKana": "ユキタナカ",
+          "phones": [
+            "09012345678"
+          ],
+          "preferredChannel": "wechat",
+          "primaryPhone": "09012345678"
+        },
+        "id": "50a275c8-a659-4713-8bd3-ca4827d3a55c",
+        "leadId": "f418458d-b956-416f-9beb-edfa7f1fa42a",
+        "propertySnapshot": {
+          "title": "Giant 3"
+        },
+        "scheduledEndAt": "2025-12-18T06:05:00Z",
+        "scheduledStartAt": "2025-12-18T05:05:00Z",
+        "status": "scheduled",
+        "userId": "demo-user-1"
+      }
+    },
+    {
+      "schema_name": "visit",
+      "row_id": "019b1073-1032-798a-82d9-9fc139dacc81",
+      "attributes": {
+        "id": "71752605-c6ae-4705-a896-835150047930",
+        "leadId": "019aeb94-267f-762c-9f26-19255ad741c8",
+        "propertySnapshot": {
+          "title": "Ei"
+        },
+        "scheduledEndAt": "2025-12-12T03:44:17Z",
+        "scheduledStartAt": "2025-12-12T02:44:17Z"
+      }
+    },
+    {
+      "schema_name": "visit",
+      "row_id": "019b12a7-470b-7ac8-8544-b41203bf90f5",
+      "attributes": {
+        "contactSnapshot": {
+          "name": "Lei Zhang",
+          "nameNative": "张磊",
+          "phones": [
+            "0123"
+          ],
+          "preferredChannel": "phone",
+          "primaryPhone": "0123"
+        },
+        "id": "2cf6a8bb-57b4-4eba-8891-0a67824e55b5",
+        "leadId": "9889e560-5064-49bc-8ce7-6bb772328d7e",
+        "propertySnapshot": {
+          "title": "小房子"
+        },
+        "scheduledEndAt": "2025-12-18T08:00:00Z",
+        "scheduledStartAt": "2025-12-18T06:00:00Z",
+        "status": "scheduled",
+        "userId": "demo-user-1"
+      }
+    },
+    {
+      "schema_name": "visit",
+      "row_id": "019b1595-ed6f-7282-8dfb-1b9d0fc51401",
+      "attributes": {
+        "id": "fe9f53a6-08d1-47e7-bad7-433020084723",
+        "leadId": "019aeb94-267f-762c-9f26-19255ad741c8",
+        "propertySnapshot": {
+          "title": "13 Sat Test"
+        },
+        "scheduledEndAt": "2025-12-13T03:40:49Z",
+        "scheduledStartAt": "2025-12-13T02:40:49Z"
+      }
+    },
+    {
+      "schema_name": "visit",
+      "row_id": "019b2f17-c31f-7089-aee0-3a237824c0e9",
+      "attributes": {
+        "id": "93f6e24b-b83f-424d-a231-4d22f440aa79",
+        "leadId": "019b2770-3187-7522-9fe9-10ff47faf0c0",
+        "propertySnapshot": {
+          "title": "Nothing"
+        },
+        "scheduledEndAt": "2025-12-18T02:33:47.944Z",
+        "scheduledStartAt": "2025-12-18T01:33:47.944Z"
+      }
+    },
+    {
+      "schema_name": "visit",
+      "row_id": "019b3563-2438-7b79-9ea1-78b5b38292ea",
+      "attributes": {
+        "contactSnapshot": {
+          "name": "神奇 小子",
+          "nameNative": "神奇 小子",
+          "phones": [
+            "0321345293"
+          ],
+          "primaryPhone": "0321345293"
+        },
+        "id": "5ce50302-e337-4067-b6b5-34071482f198",
+        "leadId": "33b5e525-e2a7-4520-9259-2e24654c11a1",
+        "propertySnapshot": {
+          "title": "19"
+        },
+        "scheduledEndAt": "2025-12-19T07:53:42.366Z",
+        "scheduledStartAt": "2025-12-19T06:53:42.366Z",
+        "status": "scheduled"
+      }
+    }
+  ],
+  "total_records": 9,
+  "total_pages": 1,
+  "current_page": 1,
+  "items_per_page": 20,
+  "has_next": false,
+  "has_previous": false,
+  "execution_time": 311110990
+}

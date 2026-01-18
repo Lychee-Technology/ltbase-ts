@@ -15,8 +15,14 @@ const COMMANDS = new Set([
   'deepping',
   'create-activity',
   'list-activities',
+  'create-lead',
   'list-leads',
+  'get-lead',
   'update-lead',
+  'create-visit',
+  'list-visits',
+  'delete-visit',
+  'list-logs',
   'create-note',
   'get-note',
   'list-notes',
@@ -59,7 +65,7 @@ function parseArgs(argv: string[]): ParsedArgs {
 
   while (i < args.length) {
     if (!parseOption(parsed.params)) {
-      // positional (used only by delete-note)
+      // positional (used only by delete-note/delete-visit)
       parsed.params._ = args.slice(i).join(' ');
       break;
     }
@@ -127,8 +133,14 @@ Commands:
   deepping               [--echo <text>]
   create-activity        --type <call|line|email|visit|note> --direction <inbound|outbound> --user-id <id> --summary <text> [--id <id>] [--at <iso>] [--next-follow-up-at <iso>] [--lead-id <id>]
   list-activities        [--user-id <id>] [--lead-id <id>] [--page N] [--items-per-page N]
-  list-leads             [--page N] [--items-per-page N]
+  create-lead            --name <name> --pipeline <buy|rent|sell|landlord> --tenant-id <id> --owner-user-id <id> [--id <uuid>] [--email <email>] [--phone <phone>] [--stage <stage>] [--status <status>] [--source-channel <channel>] [--source-name <name>] [--tags <tag1,tag2>] [--file <path>]
+  list-leads             --lead-id <uuid> [--page N] [--items-per-page N] [--order-by field:asc|desc]
+  get-lead               --lead-id <uuid>
   update-lead            --lead-id <uuid> --file <path>
+  create-visit           --lead-id <id> --user-id <id> --property-id <id> [--id <uuid>] [--scheduled-start-at <iso>] [--scheduled-end-at <iso>] [--status <scheduled|visited|no_show|canceled|rescheduled>] [--feedback <text>] [--attendees <name1,name2>] [--next-follow-up-at <iso>] [--file <path>]
+  list-visits            [--lead-id <id>] [--user-id <id>] [--property-id <id>] [--page N] [--items-per-page N]
+  delete-visit           --visit-row-id <uuid>
+  list-logs              [--log-id <id>] [--lead-id <id>] [--visit-id <id>] [--owner-id <id>] [--page N] [--items-per-page N]
   create-note            --owner-id <id> --type <mime> [--data <text>|--file <path>] [--role <role>]
   get-note               --owner-id <id> --note-id <uuid>
   list-notes             --owner-id <id> [--page N] [--items-per-page N] [--schema-name name] [--summary text]
@@ -188,12 +200,25 @@ async function main() {
         break;
       }
       case 'create-note': {
+        const models = [{
+          'type': 'log', 'data': {
+            'id': '17d9bdb7-adb6-4d6c-95dc-ff17b5e3c7d9',
+            'visitId': '94fdbcbe-1744-4ed9-910c-b9b59268d3e4',
+            'noteId': '${note.note_id}',
+            'ownerId': '${note.owner_id}',
+            'summary': '${note.summary}',
+            'type': '${note.type}',
+            'createdAt': '${note.created_at}',
+            'updatedAt': '${note.updated_at}',
+          }
+        }]
         const payload = await handler.createNote({
           ownerId: requiredString(params, 'owner-id'),
           type: requiredString(params, 'type'),
           data: optionalString(params, 'data'),
           filePath: optionalString(params, 'file'),
           role: optionalString(params, 'role'),
+          models,
         });
         console.log('✓ Note created');
         console.log(JSON.stringify(payload, null, 2));
@@ -218,11 +243,57 @@ async function main() {
         console.log(JSON.stringify(payload, null, 2));
         break;
       }
+      case 'create-lead': {
+        const tagsStr = optionalString(params, 'tags');
+        const tags = tagsStr ? tagsStr.split(',').map((t) => t.trim()) : undefined;
+
+        const payload = await handler.createLead({
+          id: optionalString(params, 'id'),
+          tenantId: requiredString(params, 'tenant-id'),
+          ownerUserId: requiredString(params, 'owner-user-id'),
+          pipeline: requireEnum(params, 'pipeline', ['buy', 'rent', 'sell', 'landlord']),
+          stage: optionalString(params, 'stage') as
+            | 'new'
+            | 'contacted'
+            | 'need_defined'
+            | 'viewing'
+            | 'offer'
+            | 'contract'
+            | 'closed'
+            | undefined,
+          status: optionalString(params, 'status') as 'open' | 'won' | 'lost' | 'junk' | undefined,
+          name: requiredString(params, 'name'),
+          email: optionalString(params, 'email'),
+          phone: optionalString(params, 'phone'),
+          sourceChannel: optionalString(params, 'source-channel') as
+            | 'portal'
+            | 'walk_in'
+            | 'referral'
+            | 'phone'
+            | 'web_form'
+            | 'event'
+            | 'other'
+            | undefined,
+          sourceName: optionalString(params, 'source-name'),
+          tags,
+          filePath: optionalString(params, 'file'),
+        });
+        console.log('✓ Lead created');
+        console.log(JSON.stringify(payload, null, 2));
+        break;
+      }
       case 'list-leads': {
         const payload = await handler.listLeads({
+          leadId: optionalString(params, 'lead-id'),
           page: parseNumberParam(params, 'page'),
           itemsPerPage: parseNumberParam(params, 'items-per-page'),
+          orderBy: optionalString(params, 'order-by'),
         });
+        console.log(JSON.stringify(payload, null, 2));
+        break;
+      }
+      case 'get-lead': {
+        const payload = await handler.getLead(requiredString(params, 'lead-id'));
         console.log(JSON.stringify(payload, null, 2));
         break;
       }
@@ -232,6 +303,64 @@ async function main() {
           filePath: requiredString(params, 'file'),
         });
         console.log('✓ Lead updated');
+        console.log(JSON.stringify(payload, null, 2));
+        break;
+      }
+      case 'create-visit': {
+        const attendeesStr = optionalString(params, 'attendees');
+        const attendees = attendeesStr ? attendeesStr.split(',').map((a) => a.trim()) : undefined;
+
+        const payload = await handler.createVisit({
+          id: optionalString(params, 'id'),
+          leadId: requiredString(params, 'lead-id'),
+          userId: requiredString(params, 'user-id'),
+          propertyId: requiredString(params, 'property-id'),
+          scheduledStartAt: optionalString(params, 'scheduled-start-at'),
+          scheduledEndAt: optionalString(params, 'scheduled-end-at'),
+          status: optionalString(params, 'status') as
+            | 'scheduled'
+            | 'visited'
+            | 'no_show'
+            | 'canceled'
+            | 'rescheduled'
+            | undefined,
+          feedback: optionalString(params, 'feedback'),
+          attendees,
+          nextFollowUpAt: optionalString(params, 'next-follow-up-at'),
+          filePath: optionalString(params, 'file'),
+        });
+        console.log('✓ Visit created');
+        console.log(JSON.stringify(payload, null, 2));
+        break;
+      }
+      case 'list-visits': {
+        const payload = await handler.listVisits({
+          leadId: optionalString(params, 'lead-id'),
+          userId: optionalString(params, 'user-id'),
+          propertyId: optionalString(params, 'property-id'),
+          page: parseNumberParam(params, 'page'),
+          itemsPerPage: parseNumberParam(params, 'items-per-page'),
+        });
+        console.log(JSON.stringify(payload, null, 2));
+        break;
+      }
+      case 'delete-visit': {
+        const visitId = optionalString(params, 'visit-row-id') ?? optionalString(params, '_');
+        if (!visitId) throw new Error('Missing --visit-row-id');
+        const payload = await handler.deleteVisit(visitId.trim());
+        console.log('✓ Visit deleted');
+        console.log(JSON.stringify(payload, null, 2));
+        break;
+      }
+      case 'list-logs': {
+        const payload = await handler.listLogs({
+          logId: optionalString(params, 'log-id'),
+          leadId: optionalString(params, 'lead-id'),
+          visitId: optionalString(params, 'visit-id'),
+          ownerId: optionalString(params, 'owner-id'),
+          page: parseNumberParam(params, 'page'),
+          itemsPerPage: parseNumberParam(params, 'items-per-page'),
+        });
         console.log(JSON.stringify(payload, null, 2));
         break;
       }

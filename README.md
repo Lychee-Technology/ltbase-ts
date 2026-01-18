@@ -58,11 +58,12 @@ Supported commands mirror the Dart client:
 - `deepping [--echo text]`
 - `create-note --owner-id <id> --type <mime> [--data text|--file path] [--role role]`
 - `get-note --owner-id <id> --note-id <uuid>`
-- `list-leads [--page N] [--items-per-page N]`
+- `list-leads [--page N] [--items-per-page N] [--order-by field:asc|desc]`
 - `list-notes --owner-id <id> [--page N] [--items-per-page N] [--schema-name name] [--summary text]`
 - `update-lead --lead-id <uuid> --file <path-to-json>`
 - `update-note --owner-id <id> --note-id <uuid> --summary <text>`
 - `delete-note --note-id <uuid>`
+- `delete-visit --visit-row-id <uuid>`
 
 ## API surface
 

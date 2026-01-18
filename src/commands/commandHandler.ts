@@ -18,6 +18,7 @@ export interface CreateNoteOptions {
   data?: string;
   filePath?: string;
   role?: string;
+  models: unknown[];
 }
 
 export interface ListObjectsOptions {
@@ -39,11 +40,56 @@ export interface ListActivitiesOptions extends ListObjectsOptions {
 
 export interface ListLeadsOptions extends ListObjectsOptions {
   leadId?: string;
+  orderBy?: string;
 }
 
 export interface UpdateLeadOptions {
   leadId: string;
   filePath: string;
+}
+
+export interface CreateLeadOptions {
+  id?: string;
+  tenantId: string;
+  ownerUserId: string;
+  pipeline: 'buy' | 'rent' | 'sell' | 'landlord';
+  stage?: 'new' | 'contacted' | 'need_defined' | 'viewing' | 'offer' | 'contract' | 'closed';
+  status?: 'open' | 'won' | 'lost' | 'junk';
+  temperature?: 'Hot' | 'Warm' | 'New' | 'Qualified';
+  name: string;
+  email?: string;
+  phone?: string;
+  sourceChannel?: 'portal' | 'walk_in' | 'referral' | 'phone' | 'web_form' | 'event' | 'other';
+  sourceName?: string;
+  tags?: string[];
+  filePath?: string;
+}
+
+export interface CreateVisitOptions {
+  id?: string;
+  leadId: string;
+  userId: string;
+  propertyId: string;
+  scheduledStartAt?: string;
+  scheduledEndAt?: string;
+  status?: 'scheduled' | 'visited' | 'no_show' | 'canceled' | 'rescheduled';
+  feedback?: string;
+  attendees?: string[];
+  nextFollowUpAt?: string;
+  filePath?: string;
+}
+
+export interface ListVisitsOptions extends ListObjectsOptions {
+  leadId?: string;
+  userId?: string;
+  propertyId?: string;
+}
+
+export interface ListLogsOptions extends ListObjectsOptions {
+  logId?: string;
+  leadId?: string;
+  visitId?: string;
+  ownerId?: string;
 }
 
 export class CommandHandler {
@@ -76,6 +122,7 @@ export class CommandHandler {
       type,
       data: noteData,
       role: role ?? 'real_estate',
+      models: options.models,
     };
 
     const response = await this.client.post('/api/ai/v1/notes', body);
@@ -95,6 +142,7 @@ export class CommandHandler {
     if (options.itemsPerPage !== undefined) params.items_per_page = options.itemsPerPage;
     if (options.schemaName) params.schema_name = options.schemaName;
     if (options.summary) params.summary = options.summary;
+    params.owner_id = options.ownerId;
 
     const response = await this.client.get('/api/ai/v1/notes', params);
     this.assertSuccess(response, 'Failed to list notes');
@@ -105,9 +153,17 @@ export class CommandHandler {
     const params: QueryParams = {};
     if (options.page !== undefined) params.page = options.page;
     if (options.itemsPerPage !== undefined) params.items_per_page = options.itemsPerPage;
+    if (options.orderBy) params.order_by = options.orderBy;
+    if (options.leadId) params.id = `equals:${options.leadId}`;
 
     const response = await this.client.get('/api/v1/lead', params);
     this.assertSuccess(response, 'Failed to list lead');
+    return response.json();
+  }
+
+  async getLead(leadId: string) {
+    const response = await this.client.get(`/api/v1/lead?id=${leadId}`);
+    this.assertSuccess(response, 'Failed to get lead');
     return response.json();
   }
 
@@ -128,11 +184,156 @@ export class CommandHandler {
     const params: QueryParams = {};
     if (options.page !== undefined) params.page = options.page;
     if (options.itemsPerPage !== undefined) params.items_per_page = options.itemsPerPage;
-    if (options.userId) params.user_id = options.userId;
-    if (options.leadId) params.lead_id = options.leadId;
+    if (options.userId) params.userId = options.userId;
+    if (options.leadId) params.leadId = options.leadId;
 
     const response = await this.client.get('/api/v1/activity', params);
     this.assertSuccess(response, 'Failed to list activities');
+    return response.json();
+  }
+
+  async createLead(options: CreateLeadOptions) {
+    const now = new Date().toISOString();
+
+    // If filePath is provided, read and use that as base
+    let payload: Record<string, unknown>;
+    if (options.filePath) {
+      const fileContent = await readFile(options.filePath, 'utf8').catch((err) => {
+        throw new Error(`Failed to read JSON file "${options.filePath}": ${(err as Error).message}`);
+      });
+      try {
+        payload = JSON.parse(fileContent) as Record<string, unknown>;
+      } catch (err) {
+        throw new Error(`Invalid JSON in file "${options.filePath}": ${(err as Error).message}`);
+      }
+    } else {
+      payload = {};
+    }
+
+    // Auto-generate and fill required fields
+    const { randomUUID } = await import('node:crypto');
+
+    payload.id = options.id ?? payload.id ?? randomUUID();
+    payload.tenantId = options.tenantId ?? payload.tenantId;
+    payload.ownerUserId = options.ownerUserId ?? payload.ownerUserId;
+    payload.pipeline = options.pipeline ?? payload.pipeline;
+    payload.stage = options.stage ?? payload.stage ?? 'new';
+    payload.status = options.status ?? payload.status ?? 'open';
+    payload.temperature = options.temperature ?? payload.temperature ?? 'New';
+    payload.createdAt = payload.createdAt ?? now;
+    payload.updatedAt = now;
+    payload.firstTouchAt = payload.firstTouchAt ?? now;
+
+    // Build contact object
+    const existingContact = (payload.contact as Record<string, unknown>) ?? {};
+    payload.contact = {
+      ...existingContact,
+      name: options.name ?? existingContact.name,
+      ...(options.email && { email: options.email }),
+      ...(options.phone && { primaryPhone: options.phone, phones: [options.phone] }),
+    };
+
+    // Build source object if channel provided
+    if (options.sourceChannel) {
+      const existingSource = (payload.source as Record<string, unknown>) ?? {};
+      payload.source = {
+        ...existingSource,
+        channel: options.sourceChannel,
+        ...(options.sourceName && { name: options.sourceName }),
+      };
+    }
+
+    // Add tags if provided
+    if (options.tags && options.tags.length > 0) {
+      payload.tags = options.tags;
+    }
+
+    const response = await this.client.post('/api/v1/lead', payload);
+    this.assertSuccess(response, 'Failed to create lead');
+    return response.json();
+  }
+
+  async listVisits(options: ListVisitsOptions = {}) {
+    const params: QueryParams = {};
+    if (options.page !== undefined) params.page = options.page;
+    if (options.itemsPerPage !== undefined) params.items_per_page = options.itemsPerPage;
+    if (options.leadId) params.leadId = options.leadId;
+    if (options.userId) params.userId = options.userId;
+    if (options.propertyId) params.property_id = options.propertyId;
+
+    const response = await this.client.get('/api/v1/visit', params);
+    this.assertSuccess(response, 'Failed to list visits');
+    return response.json();
+  }
+
+  async listLogs(options: ListLogsOptions = {}) {
+    const params: QueryParams = {};
+    if (options.page !== undefined) params.page = options.page;
+    if (options.itemsPerPage !== undefined) params.items_per_page = options.itemsPerPage;
+    if (options.logId) params.id = options.logId;
+    if (options.leadId) params.leadId = options.leadId;
+    if (options.visitId) params.visitId = options.visitId;
+    if (options.ownerId) params.ownerId = options.ownerId;
+    
+    params.order_by = 'updatedAt:desc';
+
+    const response = await this.client.get('/api/v1/log', params);
+    this.assertSuccess(response, 'Failed to list logs');
+    return response.json();
+  }
+
+  async createVisit(options: CreateVisitOptions) {
+    const now = new Date().toISOString();
+
+    // If filePath is provided, read and use that as base
+    let payload: Record<string, unknown>;
+    if (options.filePath) {
+      const fileContent = await readFile(options.filePath, 'utf8').catch((err) => {
+        throw new Error(`Failed to read JSON file "${options.filePath}": ${(err as Error).message}`);
+      });
+      try {
+        payload = JSON.parse(fileContent) as Record<string, unknown>;
+      } catch (err) {
+        throw new Error(`Invalid JSON in file "${options.filePath}": ${(err as Error).message}`);
+      }
+    } else {
+      payload = {};
+    }
+
+    // Auto-generate and fill required fields
+    const { randomUUID } = await import('node:crypto');
+
+    payload.id = options.id ?? payload.id ?? randomUUID();
+    payload.leadId = options.leadId ?? payload.leadId;
+    payload.userId = options.userId ?? payload.userId;
+    payload.propertyId = options.propertyId ?? payload.propertyId;
+    payload.scheduledStartAt = options.scheduledStartAt ?? payload.scheduledStartAt ?? now;
+    payload.status = options.status ?? payload.status ?? 'scheduled';
+    payload.createdAt = payload.createdAt ?? now;
+    payload.updatedAt = now;
+
+    // Optional fields
+    if (options.scheduledEndAt) {
+      payload.scheduledEndAt = options.scheduledEndAt;
+    }
+    if (options.feedback) {
+      payload.feedback = options.feedback;
+    }
+    if (options.attendees && options.attendees.length > 0) {
+      payload.attendees = options.attendees;
+    }
+    if (options.nextFollowUpAt) {
+      payload.nextFollowUpAt = options.nextFollowUpAt;
+    }
+
+    const response = await this.client.post('/api/v1/visit', payload);
+    this.assertSuccess(response, 'Failed to create visit');
+    return response.json();
+  }
+
+  async deleteVisit(rowId: string) {
+    const response = await this.client.delete(`/api/v1/visit/${rowId}`);
+    this.assertSuccess(response, 'Failed to delete visit');
     return response.json();
   }
 
