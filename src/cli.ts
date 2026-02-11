@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { CommandHandler } from './commands/commandHandler';
 import { ApiClient } from './api/client';
 import { AuthSigner } from './auth/signer';
+import { AuthServiceClient } from './auth/client';
 
 type ArgValue = string | boolean;
 
@@ -13,6 +14,14 @@ interface ParsedArgs {
 
 const COMMANDS = new Set([
   'deepping',
+  'auth-health',
+  'auth-jwks',
+  'auth-login',
+  'auth-bind',
+  'auth-exchange',
+  'auth-refresh',
+  'auth-revoke',
+  'auth-provision',
   'create-activity',
   'list-activities',
   'create-lead',
@@ -29,6 +38,19 @@ const COMMANDS = new Set([
   'update-note',
   'delete-note',
 ]);
+
+const AUTH_COMMANDS = new Set([
+  'auth-health',
+  'auth-jwks',
+  'auth-login',
+  'auth-bind',
+  'auth-exchange',
+  'auth-refresh',
+  'auth-revoke',
+  'auth-provision',
+]);
+
+const SUPPORTED_AUTH_PROVIDERS = ['google', 'supabase', 'firebase', 'apple'] as const;
 
 function parseArgs(argv: string[]): ParsedArgs {
   const args = argv.slice(2);
@@ -121,6 +143,7 @@ LTBase CLI (Bun)
 
 Usage:
   bun run src/cli.ts --access-key-id AK_xxx --access-secret SK_xxx [--base-url https://api.example.com] <command> [options]
+  bun run src/cli.ts [--base-url https://api.example.com] <auth-command> [options]
 
 Global options:
   --access-key-id      Access Key ID (AK_xxx)
@@ -131,6 +154,14 @@ Global options:
 
 Commands:
   deepping               [--echo <text>]
+  auth-health            --bearer <token>
+  auth-jwks
+  auth-login              --provider <google|supabase|firebase|apple> --id-token <token> --project-id <project-id> [--login-path-template </api/v1/login/{provider}>]
+  auth-bind               --provider <google|supabase|firebase|apple> --id-token <token> --code <code> --project-id <project-id> [--binding-path-template </api/v1/id_bindings/{provider}>]
+  auth-exchange           Alias of auth-login
+  auth-refresh            --refresh-token <token> --bearer <token>
+  auth-revoke             --jti <id> [--reason <text>] --bearer <token>
+  auth-provision          Alias of auth-bind
   create-activity        --type <call|line|email|visit|note> --direction <inbound|outbound> --user-id <id> --summary <text> [--id <id>] [--at <iso>] [--next-follow-up-at <iso>] [--lead-id <id>]
   list-activities        [--user-id <id>] [--lead-id <id>] [--page N] [--items-per-page N]
   create-lead            --name <name> --pipeline <buy|rent|sell|landlord> --tenant-id <id> --owner-user-id <id> [--id <uuid>] [--email <email>] [--phone <phone>] [--stage <stage>] [--status <status>] [--source-channel <channel>] [--source-name <name>] [--tags <tag1,tag2>] [--file <path>]
@@ -152,16 +183,93 @@ Commands:
 async function main() {
   try {
     const { global, command, params } = parseArgs(process.argv);
+    const isAuthCommand = command ? AUTH_COMMANDS.has(command) : false;
 
     if (global.help || !command) {
       printUsage();
       return;
     }
 
-    const accessKeyId = requiredString(global, 'access-key-id');
-    const accessSecret = requiredString(global, 'access-secret');
     const baseUrl = optionalString(global, 'base-url') ?? 'https://api.example.com';
     const verbose = global.verbose === true;
+
+    if (isAuthCommand) {
+      const authClient = new AuthServiceClient({
+        baseUrl,
+        verbose,
+        loginPathTemplate: optionalString(params, 'login-path-template'),
+        bindingPathTemplate: optionalString(params, 'binding-path-template'),
+      });
+      switch (command) {
+        case 'auth-health': {
+          const bearer = requiredString(params, 'bearer');
+          const payload = await authClient.health(bearer);
+          console.log('✓ Auth health ok');
+          console.log(JSON.stringify(payload, null, 2));
+          break;
+        }
+        case 'auth-jwks': {
+          const payload = await authClient.jwks();
+          console.log(JSON.stringify(payload, null, 2));
+          break;
+        }
+        case 'auth-login':
+        case 'auth-exchange': {
+          const provider = requireEnum(params, 'provider', SUPPORTED_AUTH_PROVIDERS);
+          const idToken = requiredString(params, 'id-token');
+          const projectId = requiredString(params, 'project-id');
+          const payload = await authClient.login(provider, idToken, {
+            project_id: projectId,
+          });
+          console.log('✓ Login successful');
+          console.log(JSON.stringify(payload, null, 2));
+          break;
+        }
+        case 'auth-refresh': {
+          const refreshToken = requiredString(params, 'refresh-token');
+          const bearer = requiredString(params, 'bearer');
+          const payload = await authClient.refresh(refreshToken, bearer);
+          console.log('✓ Refresh successful');
+          console.log(JSON.stringify(payload, null, 2));
+          break;
+        }
+        case 'auth-revoke': {
+          const jti = requiredString(params, 'jti');
+          const bearer = requiredString(params, 'bearer');
+          const reason = optionalString(params, 'reason');
+          const payload = await authClient.revoke(jti, bearer, reason);
+          console.log('✓ Token revoked');
+          console.log(JSON.stringify(payload, null, 2));
+          break;
+        }
+        case 'auth-bind':
+        case 'auth-provision': {
+          const provider = requireEnum(params, 'provider', SUPPORTED_AUTH_PROVIDERS);
+          const idToken = requiredString(params, 'id-token');
+          const code = requiredString(params, 'code');
+          const projectId = requiredString(params, 'project-id');
+          const payload = await authClient.bind(
+            provider,
+            {
+              bind_context: {
+                code,
+                project_id: projectId,
+              },
+            },
+            idToken,
+          );
+          console.log('✓ Bind successful');
+          console.log(JSON.stringify(payload, null, 2));
+          break;
+        }
+        default:
+          printUsage();
+      }
+      return;
+    }
+
+    const accessKeyId = requiredString(global, 'access-key-id');
+    const accessSecret = requiredString(global, 'access-secret');
 
     const signer = new AuthSigner({ accessKeyId, accessSecret });
     const client = new ApiClient({ baseUrl, signer, verbose });

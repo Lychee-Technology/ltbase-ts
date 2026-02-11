@@ -56,6 +56,10 @@ bun run src/cli.ts --access-key-id AK_xxx --access-secret SK_xxx --base-url http
 Supported commands mirror the Dart client:
 
 - `deepping [--echo text]`
+- `auth-login --provider <google|supabase|firebase|apple> --id-token <token> --project-id <project-id> [--login-path-template </api/v1/login/{provider}>]`
+- `auth-bind --provider <google|supabase|firebase|apple> --id-token <token> --code <code> --project-id <project-id> [--binding-path-template </api/v1/id_bindings/{provider}>]`
+- `auth-exchange` (alias of `auth-login`)
+- `auth-provision` (alias of `auth-bind`)
 - `create-note --owner-id <id> --type <mime> [--data text|--file path] [--role role]`
 - `get-note --owner-id <id> --note-id <uuid>`
 - `list-leads [--page N] [--items-per-page N] [--order-by field:asc|desc]`
@@ -64,6 +68,64 @@ Supported commands mirror the Dart client:
 - `update-note --owner-id <id> --note-id <uuid> --summary <text>`
 - `delete-note --note-id <uuid>`
 - `delete-visit --visit-row-id <uuid>`
+
+## AAA auth examples
+
+Based on RFC `EN/aaa.md`, the default auth endpoints are:
+
+- `POST /api/v1/login/{provider}`
+- `POST /api/v1/id_bindings/{provider}`
+
+```ts
+import { AuthServiceClient } from './src';
+
+const auth = new AuthServiceClient({
+  baseUrl: 'https://api.example.com',
+});
+
+const loginResult = await auth.login(
+  'firebase',
+  process.env.FIREBASE_ID_TOKEN!,
+  {
+    project_id: 'project_456',
+  },
+);
+
+const bindResult = await auth.bind(
+  'firebase',
+  {
+    bind_context: {
+      code: 'ABC123',
+      project_id: 'project_456',
+    },
+  },
+  process.env.FIREBASE_ID_TOKEN!,
+);
+```
+
+If your gateway exposes `/api/v1/auth/firebase`, set `--login-path-template` (CLI) or
+`loginPathTemplate` (SDK):
+
+```bash
+bun run src/cli.ts --base-url https://api.example.com \
+  auth-login --provider firebase --id-token "$FIREBASE_ID_TOKEN" --project-id project_456 \
+  --login-path-template /api/v1/auth/{provider}
+```
+
+```ts
+const authViaCustomPath = new AuthServiceClient({
+  baseUrl: 'https://api.example.com',
+  loginPathTemplate: '/api/v1/auth/{provider}',
+});
+
+const tokenPair = await authViaCustomPath.login(
+  'firebase',
+  process.env.FIREBASE_ID_TOKEN!,
+  {
+    project_id: 'project_456',
+  },
+);
+```
 
 ## API surface
 
