@@ -37,8 +37,8 @@ const note = await commands.createNote({
 
 const listed = await commands.listNotes({ ownerId: 'user123', page: 1, itemsPerPage: 10 });
 const fetched = await commands.getNote('user123', note?.note_id);
-await commands.updateNote('user123', note?.note_id, 'Updated summary');
-await commands.deleteNote(note?.note_id);
+await commands.updateNote(note?.note_id, 'Updated summary', 'user123');
+await commands.deleteNote(note?.note_id, 'user123');
 ```
 
 ## CLI
@@ -56,18 +56,90 @@ bun run src/cli.ts --access-key-id AK_xxx --access-secret SK_xxx --base-url http
 Supported commands mirror the Dart client:
 
 - `deepping [--echo text]`
+- `auth-health --bearer <token>`
+- `auth-jwks --bearer <token>` (resolves URL from JWT `iss`: `<issuer>/.well-known/jwks.json`)
 - `auth-login --provider <google|supabase|firebase|apple> --id-token <token> --project-id <project-id> [--login-path-template </api/v1/login/{provider}>]`
 - `auth-bind --provider <google|supabase|firebase|apple> --id-token <token> --code <code> --project-id <project-id> [--binding-path-template </api/v1/id_bindings/{provider}>]`
 - `auth-exchange` (alias of `auth-login`)
 - `auth-provision` (alias of `auth-bind`)
-- `create-note --owner-id <id> --type <mime> [--data text|--file path] [--role role]`
+- `auth-refresh --refresh-token <token> --bearer <token> [--project-id <project-id>]`
+- `auth-refresh-with-access --access-token <token> --refresh-token <token> [--project-id <project-id>]` (sends refresh token in `Authorization` header and access token in request body)
+- `create-note --owner-id <id> --type <mime> [--data text|--file path] [--role role] [--visit-id <id>]`
 - `get-note --owner-id <id> --note-id <uuid>`
+- `get-note-model-sync --owner-id <id> --note-id <uuid>`
+- `retry-note-model-sync --owner-id <id> --note-id <uuid>`
 - `list-leads [--page N] [--items-per-page N] [--order-by field:asc|desc]`
-- `list-notes --owner-id <id> [--page N] [--items-per-page N] [--schema-name name] [--summary text]`
+- `list-notes --owner-id <id> [--page N] [--items-per-page N] [--summary text]`
 - `update-lead --lead-id <uuid> --file <path-to-json>`
-- `update-note --owner-id <id> --note-id <uuid> --summary <text>`
-- `delete-note --note-id <uuid>`
+- `update-note --note-id <uuid> --summary <text> [--owner-id <id>]`
+- `delete-note --note-id <uuid> --owner-id <id>`
 - `delete-visit --visit-row-id <uuid>`
+- `search --schemas <lead,visit,...> --q <text> [--page N] [--page-size N]`
+- `advanced-query --file <path-to-json>`
+- `create-session --owner-id <id> [--session-id <id>] [--file <path-to-json>]`
+- `get-session --session-id <id> --owner-id <id>`
+- `send-session-message --session-id <id> --owner-id <id> [--file <path-to-json>|--user-input <text> [--input-type <mime>] [--confirmed <true|false>]]`
+- `list-session-messages --session-id <id> --owner-id <id>`
+- `run-operation --owner-id <id> [--file <path-to-json>|--user-input <text> [--input-type <mime>] [--confirmed <true|false>]]`
+
+Notes API alignment with current data plane implementation:
+- `DELETE /api/ai/v1/notes/{note_id}` requires `owner_id` query param
+- `schema_name` filter is currently not supported on list-notes
+- `create-note` sends one default `log` model when `models` is not provided, with runtime `id/visitId` and `${note.*}` template bindings
+
+## Token-based E2E script
+
+If you already have `access token` (and optional `refresh token`), use the token E2E runner:
+
+With refresh:
+
+```bash
+cd ltbase-ts
+bun run e2e:token -- \
+  --auth-base-url "https://auth.example.com" \
+  --access-token "$LTBASE_ACCESS_TOKEN" \
+  --refresh-token "$LTBASE_REFRESH_TOKEN" \
+  --project-id "$LTBASE_PROJECT_ID" \
+  --owner-id "user123"
+```
+
+Without refresh (access token only):
+
+```bash
+cd ltbase-ts
+bun run e2e:token -- \
+  --access-token "$LTBASE_ACCESS_TOKEN" \
+  --owner-id "user123"
+```
+
+It validates:
+
+- `auth health`
+- `auth refresh`
+- `create note`
+- `list notes` (contains created note)
+- `list logs` (contains the created note log)
+- `forma CRUD` for `lead`, `visit`, `log` (create/list/get/update/delete)
+- `delete note` cleanup (skip with `--keep-note`)
+
+You can also pass values by env vars:
+
+```bash
+export LTBASE_ACCESS_TOKEN="..."
+export LTBASE_PROJECT_ID="project_456"
+export LTBASE_OWNER_ID="user123"
+export LTBASE_VISIT_ID="visit_001" # optional, used for note->log model data
+export LTBASE_TENANT_ID="agency_001" # optional, default agency_001
+export LTBASE_OWNER_USER_ID="demo-user-1" # optional, default LTBASE_OWNER_ID
+export LTBASE_PROPERTY_ID="prop_001" # optional, default property-<uuid>
+bun run e2e:token
+```
+
+If `refresh token` is provided, auth service base URL must be provided by `--auth-base-url` (or `LTBASE_AUTH_BASE_URL`).  
+If only access token is provided, refresh/auth-health steps are skipped automatically.  
+Data plane API base URL is auto-resolved from access token claims.
+Claim keys tried first: `api_base_url`, `apiBaseUrl`, `base_url`, `baseUrl`, `ltbase_api_base_url`, `ltbaseBaseUrl`.
+`project_id` used for refresh is resolved from `--project-id` / `LTBASE_PROJECT_ID` first, then falls back to access-token claims.
 
 ## AAA auth examples
 

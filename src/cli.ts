@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import { CommandHandler } from './commands/commandHandler';
 import { ApiClient } from './api/client';
 import { AuthSigner } from './auth/signer';
@@ -20,6 +21,7 @@ const COMMANDS = new Set([
   'auth-bind',
   'auth-exchange',
   'auth-refresh',
+  'auth-refresh-with-access',
   'auth-revoke',
   'auth-provision',
   'create-activity',
@@ -34,9 +36,18 @@ const COMMANDS = new Set([
   'list-logs',
   'create-note',
   'get-note',
+  'get-note-model-sync',
+  'retry-note-model-sync',
   'list-notes',
   'update-note',
   'delete-note',
+  'search',
+  'advanced-query',
+  'create-session',
+  'get-session',
+  'send-session-message',
+  'list-session-messages',
+  'run-operation',
 ]);
 
 const AUTH_COMMANDS = new Set([
@@ -46,6 +57,7 @@ const AUTH_COMMANDS = new Set([
   'auth-bind',
   'auth-exchange',
   'auth-refresh',
+  'auth-refresh-with-access',
   'auth-revoke',
   'auth-provision',
 ]);
@@ -121,6 +133,37 @@ function parseNumberParam(params: Record<string, ArgValue>, key: string): number
   return num;
 }
 
+function optionalBoolean(params: Record<string, ArgValue>, key: string): boolean | undefined {
+  const value = params[key];
+  if (value === true) return true;
+  if (value === undefined) return undefined;
+  if (typeof value === 'string') {
+    if (value === 'true') return true;
+    if (value === 'false') return false;
+  }
+  throw new Error(`Invalid boolean for --${key}: ${String(value)}`);
+}
+
+async function readJsonFile(filePath: string): Promise<unknown> {
+  const raw = await readFile(filePath, 'utf8').catch((err) => {
+    throw new Error(`Failed to read JSON file "${filePath}": ${(err as Error).message}`);
+  });
+
+  try {
+    return JSON.parse(raw);
+  } catch (err) {
+    throw new Error(`Invalid JSON in file "${filePath}": ${(err as Error).message}`);
+  }
+}
+
+async function readJsonObjectFile(filePath: string): Promise<Record<string, unknown>> {
+  const parsed = await readJsonFile(filePath);
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error(`JSON file "${filePath}" must contain an object`);
+  }
+  return parsed as Record<string, unknown>;
+}
+
 function requireEnum<T extends string>(
   params: Record<string, ArgValue>,
   key: string,
@@ -155,11 +198,12 @@ Global options:
 Commands:
   deepping               [--echo <text>]
   auth-health            --bearer <token>
-  auth-jwks
+  auth-jwks              --bearer <token>
   auth-login              --provider <google|supabase|firebase|apple> --id-token <token> --project-id <project-id> [--login-path-template </api/v1/login/{provider}>]
   auth-bind               --provider <google|supabase|firebase|apple> --id-token <token> --code <code> --project-id <project-id> [--binding-path-template </api/v1/id_bindings/{provider}>]
   auth-exchange           Alias of auth-login
-  auth-refresh            --refresh-token <token> --bearer <token>
+  auth-refresh            --refresh-token <token> --bearer <token> [--project-id <project-id>]
+  auth-refresh-with-access --access-token <token> --refresh-token <token> [--project-id <project-id>]
   auth-revoke             --jti <id> [--reason <text>] --bearer <token>
   auth-provision          Alias of auth-bind
   create-activity        --type <call|line|email|visit|note> --direction <inbound|outbound> --user-id <id> --summary <text> [--id <id>] [--at <iso>] [--next-follow-up-at <iso>] [--lead-id <id>]
@@ -172,11 +216,20 @@ Commands:
   list-visits            [--lead-id <id>] [--user-id <id>] [--property-id <id>] [--page N] [--items-per-page N]
   delete-visit           --visit-row-id <uuid>
   list-logs              [--log-id <id>] [--lead-id <id>] [--visit-id <id>] [--owner-id <id>] [--page N] [--items-per-page N]
-  create-note            --owner-id <id> --type <mime> [--data <text>|--file <path>] [--role <role>]
+  create-note            --owner-id <id> --type <mime> [--data <text>|--file <path>] [--role <role>] [--visit-id <id>]
   get-note               --owner-id <id> --note-id <uuid>
-  list-notes             --owner-id <id> [--page N] [--items-per-page N] [--schema-name name] [--summary text]
-  update-note            --owner-id <id> --note-id <uuid> --summary <text>
-  delete-note            --note-id <uuid>
+  get-note-model-sync    --owner-id <id> --note-id <uuid>
+  retry-note-model-sync  --owner-id <id> --note-id <uuid>
+  list-notes             --owner-id <id> [--page N] [--items-per-page N] [--summary text]
+  update-note            --note-id <uuid> --summary <text> [--owner-id <id>]
+  delete-note            --note-id <uuid> --owner-id <id>
+  search                 --schemas <lead,visit,...> --q <text> [--page N] [--page-size N]
+  advanced-query         --file <path-to-json>
+  create-session         --owner-id <id> [--session-id <id>] [--file <path-to-json>]
+  get-session            --session-id <id> --owner-id <id>
+  send-session-message   --session-id <id> --owner-id <id> [--file <path-to-json>|--user-input <text> [--input-type <mime>] [--confirmed <true|false>]]
+  list-session-messages  --session-id <id> --owner-id <id>
+  run-operation          --owner-id <id> [--file <path-to-json>|--user-input <text> [--input-type <mime>] [--confirmed <true|false>]]
 `);
 }
 
@@ -209,7 +262,8 @@ async function main() {
           break;
         }
         case 'auth-jwks': {
-          const payload = await authClient.jwks();
+          const bearer = requiredString(params, 'bearer');
+          const payload = await authClient.jwks(bearer);
           console.log(JSON.stringify(payload, null, 2));
           break;
         }
@@ -228,7 +282,25 @@ async function main() {
         case 'auth-refresh': {
           const refreshToken = requiredString(params, 'refresh-token');
           const bearer = requiredString(params, 'bearer');
-          const payload = await authClient.refresh(refreshToken, bearer);
+          const projectId = optionalString(params, 'project-id');
+          const payload = await authClient.refresh(
+            refreshToken,
+            bearer,
+            projectId ? { project_id: projectId } : undefined,
+          );
+          console.log('✓ Refresh successful');
+          console.log(JSON.stringify(payload, null, 2));
+          break;
+        }
+        case 'auth-refresh-with-access': {
+          const accessToken = requiredString(params, 'access-token');
+          const refreshToken = requiredString(params, 'refresh-token');
+          const projectId = optionalString(params, 'project-id');
+          const payload = await authClient.refreshWithAccessToken(
+            accessToken,
+            refreshToken,
+            projectId ? { project_id: projectId } : undefined,
+          );
           console.log('✓ Refresh successful');
           console.log(JSON.stringify(payload, null, 2));
           break;
@@ -308,25 +380,13 @@ async function main() {
         break;
       }
       case 'create-note': {
-        const models = [{
-          'type': 'log', 'data': {
-            'id': '17d9bdb7-adb6-4d6c-95dc-ff17b5e3c7d9',
-            'visitId': '94fdbcbe-1744-4ed9-910c-b9b59268d3e4',
-            'noteId': '${note.note_id}',
-            'ownerId': '${note.owner_id}',
-            'summary': '${note.summary}',
-            'type': '${note.type}',
-            'createdAt': '${note.created_at}',
-            'updatedAt': '${note.updated_at}',
-          }
-        }]
         const payload = await handler.createNote({
           ownerId: requiredString(params, 'owner-id'),
           type: requiredString(params, 'type'),
           data: optionalString(params, 'data'),
           filePath: optionalString(params, 'file'),
           role: optionalString(params, 'role'),
-          models,
+          visitId: optionalString(params, 'visit-id'),
         });
         console.log('✓ Note created');
         console.log(JSON.stringify(payload, null, 2));
@@ -340,12 +400,27 @@ async function main() {
         console.log(JSON.stringify(payload, null, 2));
         break;
       }
+      case 'get-note-model-sync': {
+        const payload = await handler.getNoteModelSync(
+          requiredString(params, 'owner-id'),
+          requiredString(params, 'note-id'),
+        );
+        console.log(JSON.stringify(payload, null, 2));
+        break;
+      }
+      case 'retry-note-model-sync': {
+        const payload = await handler.retryNoteModelSync(
+          requiredString(params, 'owner-id'),
+          requiredString(params, 'note-id'),
+        );
+        console.log(JSON.stringify(payload, null, 2));
+        break;
+      }
       case 'list-notes': {
         const payload = await handler.listNotes({
           ownerId: requiredString(params, 'owner-id'),
           page: parseNumberParam(params, 'page'),
           itemsPerPage: parseNumberParam(params, 'items-per-page'),
-          schemaName: optionalString(params, 'schema-name'),
           summary: optionalString(params, 'summary'),
         });
         console.log(JSON.stringify(payload, null, 2));
@@ -474,9 +549,9 @@ async function main() {
       }
       case 'update-note': {
         const payload = await handler.updateNote(
-          requiredString(params, 'owner-id'),
           requiredString(params, 'note-id'),
           requiredString(params, 'summary'),
+          optionalString(params, 'owner-id'),
         );
         console.log('✓ Note updated');
         console.log(JSON.stringify(payload, null, 2));
@@ -485,8 +560,88 @@ async function main() {
       case 'delete-note': {
         const noteId = optionalString(params, 'note-id') ?? optionalString(params, '_');
         if (!noteId) throw new Error('Missing --note-id');
-        const payload = await handler.deleteNote(noteId.trim());
+        const ownerId = requiredString(params, 'owner-id');
+        const payload = await handler.deleteNote(noteId.trim(), ownerId);
         console.log('✓ Note deleted');
+        console.log(JSON.stringify(payload, null, 2));
+        break;
+      }
+      case 'search': {
+        const schemas = requiredString(params, 'schemas')
+          .split(',')
+          .map((v) => v.trim())
+          .filter((v) => v.length > 0);
+        const payload = await handler.search(schemas, requiredString(params, 'q'), {
+          page: parseNumberParam(params, 'page'),
+          pageSize: parseNumberParam(params, 'page-size'),
+        });
+        console.log(JSON.stringify(payload, null, 2));
+        break;
+      }
+      case 'advanced-query': {
+        const body = await readJsonFile(requiredString(params, 'file'));
+        const payload = await handler.advancedQuery(body);
+        console.log(JSON.stringify(payload, null, 2));
+        break;
+      }
+      case 'create-session': {
+        const ownerId = requiredString(params, 'owner-id');
+        const sessionId = optionalString(params, 'session-id');
+        const filePath = optionalString(params, 'file');
+        const body = filePath ? await readJsonObjectFile(filePath) : {};
+        const payload = await handler.createSession({
+          ...body,
+          owner_id: ownerId,
+          ...(sessionId ? { session_id: sessionId } : {}),
+        });
+        console.log('✓ Session created');
+        console.log(JSON.stringify(payload, null, 2));
+        break;
+      }
+      case 'get-session': {
+        const payload = await handler.getSession(
+          requiredString(params, 'session-id'),
+          requiredString(params, 'owner-id'),
+        );
+        console.log(JSON.stringify(payload, null, 2));
+        break;
+      }
+      case 'send-session-message': {
+        const sessionId = requiredString(params, 'session-id');
+        const ownerId = requiredString(params, 'owner-id');
+        const filePath = optionalString(params, 'file');
+        const confirmed = optionalBoolean(params, 'confirmed');
+        const body = filePath
+          ? await readJsonObjectFile(filePath)
+          : {
+              user_input: requiredString(params, 'user-input'),
+              input_type: optionalString(params, 'input-type') ?? 'text/plain',
+              ...(confirmed !== undefined ? { confirmed } : {}),
+            };
+        const payload = await handler.sendSessionMessage(sessionId, ownerId, body);
+        console.log(JSON.stringify(payload, null, 2));
+        break;
+      }
+      case 'list-session-messages': {
+        const payload = await handler.listSessionMessages(
+          requiredString(params, 'session-id'),
+          requiredString(params, 'owner-id'),
+        );
+        console.log(JSON.stringify(payload, null, 2));
+        break;
+      }
+      case 'run-operation': {
+        const ownerId = requiredString(params, 'owner-id');
+        const filePath = optionalString(params, 'file');
+        const confirmed = optionalBoolean(params, 'confirmed');
+        const body = filePath
+          ? await readJsonObjectFile(filePath)
+          : {
+              user_input: requiredString(params, 'user-input'),
+              input_type: optionalString(params, 'input-type') ?? 'text/plain',
+              ...(confirmed !== undefined ? { confirmed } : {}),
+            };
+        const payload = await handler.runOperation(ownerId, body);
         console.log(JSON.stringify(payload, null, 2));
         break;
       }
