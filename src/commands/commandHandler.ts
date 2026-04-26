@@ -100,7 +100,8 @@ export interface SearchOptions {
 
 export interface CreateSessionRequest {
   session_id?: string;
-  owner_id: string;
+  owner_id?: string;
+  project_id?: string;
   user_preferences?: Record<string, unknown>;
   attributes?: Record<string, unknown>;
   [key: string]: unknown;
@@ -426,10 +427,7 @@ export class CommandHandler {
     return response.json();
   }
 
-  async sendSessionMessage(
-    sessionId: string,
-    body: SessionMessageRequest | Record<string, unknown>,
-  ) {
+  async sendSessionMessage(sessionId: string, body: SessionMessageRequest | Record<string, unknown>) {
     const response = await this.client.request({
       method: 'POST',
       path: `/api/ai/v1/sessions/${encodeURIComponent(sessionId)}/messages`,

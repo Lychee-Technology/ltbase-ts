@@ -75,11 +75,11 @@ Supported commands mirror the Dart client:
 - `delete-visit --visit-row-id <uuid>`
 - `search --schemas <lead,visit,...> --q <text> [--page N] [--page-size N]`
 - `advanced-query --file <path-to-json>`
-- `create-session --owner-id <id> [--session-id <id>] [--file <path-to-json>]`
-- `get-session --session-id <id>`
-- `send-session-message --session-id <id> [--file <path-to-json>|--user-input <text> [--input-type <mime>] [--confirmed <true|false>]]`
-- `list-session-messages --session-id <id>`
-- `run-operation [--file <path-to-json>|--user-input <text> [--input-type <mime>] [--confirmed <true|false>]]`
+- `create-session --bearer <token> [--owner-id <id>] [--project-id <id>] [--session-id <id>] [--file <path-to-json>]`
+- `get-session --session-id <id> --bearer <token>`
+- `send-session-message --session-id <id> --bearer <token> [--file <path-to-json>|--user-input <text> [--input-type <mime>] [--confirmed <true|false>]]`
+- `list-session-messages --session-id <id> --bearer <token>`
+- `run-operation --bearer <token> [--file <path-to-json>|--user-input <text> [--input-type <mime>] [--confirmed <true|false>]]`
 
 Notes API alignment with current data plane implementation:
 - Note create compatibility still accepts optional `owner_id`, but ownership for Notes routing is derived from JWT claims
