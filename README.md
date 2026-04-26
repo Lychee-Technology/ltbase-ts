@@ -30,7 +30,6 @@ const commands = new CommandHandler(client);
 await commands.deepping('hello');
 
 const note = await commands.createNote({
-  ownerId: 'user123',
   type: 'text/plain',
   data: 'My first note',
 });
@@ -64,7 +63,7 @@ Supported commands mirror the Dart client:
 - `auth-provision` (alias of `auth-bind`)
 - `auth-refresh --refresh-token <token> --bearer <token> [--project-id <project-id>]`
 - `auth-refresh-with-access --access-token <token> --refresh-token <token> [--project-id <project-id>]` (sends refresh token in `Authorization` header and access token in request body)
-- `create-note --owner-id <id> --type <mime> [--data text|--file path] [--role role] [--visit-id <id>]`
+- `create-note --type <mime> [--data text|--file path] [--role role] [--visit-id <id>] [--owner-id <id>]`
 - `get-note --note-id <uuid>`
 - `get-note-model-sync --note-id <uuid>`
 - `retry-note-model-sync --note-id <uuid>`
@@ -83,6 +82,7 @@ Supported commands mirror the Dart client:
 - `run-operation [--file <path-to-json>|--user-input <text> [--input-type <mime>] [--confirmed <true|false>]]`
 
 Notes API alignment with current data plane implementation:
+- Note create compatibility still accepts optional `owner_id`, but ownership for Notes routing is derived from JWT claims
 - Note read/delete operations derive ownership from JWT claims instead of `owner_id` query params
 - CRUD-agent session and operation ownership are derived from JWT claims instead of `owner_id` query params
 - `list-notes` supports `schema_name`

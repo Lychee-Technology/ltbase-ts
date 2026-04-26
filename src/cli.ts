@@ -216,7 +216,7 @@ Commands:
   list-visits            [--lead-id <id>] [--user-id <id>] [--property-id <id>] [--page N] [--items-per-page N]
   delete-visit           --visit-row-id <uuid>
   list-logs              [--log-id <id>] [--lead-id <id>] [--visit-id <id>] [--owner-id <id>] [--page N] [--items-per-page N]
-  create-note            --owner-id <id> --type <mime> [--data <text>|--file <path>] [--role <role>] [--visit-id <id>]
+  create-note            --type <mime> [--data <text>|--file <path>] [--role <role>] [--visit-id <id>] [--owner-id <id>]
   get-note               --note-id <uuid>
   get-note-model-sync    --note-id <uuid>
   retry-note-model-sync  --note-id <uuid>
@@ -381,7 +381,7 @@ async function main() {
       }
       case 'create-note': {
         const payload = await handler.createNote({
-          ownerId: requiredString(params, 'owner-id'),
+          ownerId: optionalString(params, 'owner-id'),
           type: requiredString(params, 'type'),
           data: optionalString(params, 'data'),
           filePath: optionalString(params, 'file'),

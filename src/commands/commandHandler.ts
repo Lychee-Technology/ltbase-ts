@@ -14,7 +14,7 @@ export interface CreateActivityOptions {
 }
 
 export interface CreateNoteOptions {
-  ownerId: string;
+  ownerId?: string;
   type: string;
   data?: string;
   filePath?: string;
@@ -148,7 +148,7 @@ export class CommandHandler {
     const noteData = await this.loadNoteData({ type, data, filePath });
     const models = options.models ?? this.buildDefaultLogModels(visitId);
     const body = {
-      owner_id: ownerId,
+      ...(ownerId ? { owner_id: ownerId } : {}),
       type,
       data: noteData,
       role: role ?? 'real_estate',

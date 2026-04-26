@@ -71,6 +71,52 @@ function createHandler() {
 }
 
 describe('CommandHandler request shapes', () => {
+  test('createNote allows missing ownerId and omits owner_id', async () => {
+    const { client, handler } = createHandler();
+
+    await handler.createNote({
+      type: 'text/plain',
+      data: 'note body',
+      models: [],
+    });
+
+    expect(client.calls).toHaveLength(1);
+    expect(client.calls[0]).toEqual({
+      method: 'POST',
+      path: '/api/ai/v1/notes',
+      body: {
+        type: 'text/plain',
+        data: 'note body',
+        role: 'real_estate',
+        models: [],
+      },
+    });
+  });
+
+  test('createNote still forwards owner_id when ownerId is provided', async () => {
+    const { client, handler } = createHandler();
+
+    await handler.createNote({
+      ownerId: 'user-123',
+      type: 'text/plain',
+      data: 'note body',
+      models: [],
+    });
+
+    expect(client.calls).toHaveLength(1);
+    expect(client.calls[0]).toEqual({
+      method: 'POST',
+      path: '/api/ai/v1/notes',
+      body: {
+        owner_id: 'user-123',
+        type: 'text/plain',
+        data: 'note body',
+        role: 'real_estate',
+        models: [],
+      },
+    });
+  });
+
   test('listNotes omits owner_id and passes schema_name', async () => {
     const { client, handler } = createHandler();
 
@@ -82,6 +128,37 @@ describe('CommandHandler request shapes', () => {
       path: '/api/ai/v1/notes',
       queryParams: { schema_name: 'tenant_note' },
     });
+  });
+
+  test('listNotes preserves page, items_per_page, and summary', async () => {
+    const { client, handler } = createHandler();
+
+    await handler.listNotes({
+      schemaName: 'tenant_note',
+      page: 2,
+      itemsPerPage: 10,
+      summary: 'hello',
+    });
+
+    expect(client.calls).toHaveLength(1);
+    expect(client.calls[0]).toEqual({
+      method: 'GET',
+      path: '/api/ai/v1/notes',
+      queryParams: {
+        schema_name: 'tenant_note',
+        page: 2,
+        items_per_page: 10,
+        summary: 'hello',
+      },
+    });
+  });
+
+  test('listNotes rejects items_per_page over 100', async () => {
+    const { handler } = createHandler();
+
+    await expect(handler.listNotes({ itemsPerPage: 101 })).rejects.toThrow(
+      'items_per_page must be <= 100',
+    );
   });
 
   test('getNote does not send owner_id', async () => {
