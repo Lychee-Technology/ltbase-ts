@@ -36,9 +36,13 @@ const note = await commands.createNote({
 
 const listed = await commands.listNotes({ page: 1, itemsPerPage: 10, schemaName: 'log' });
 const fetched = await commands.getNote(note?.note_id);
-await commands.updateNote(note?.note_id, 'Updated summary', 'user123');
+await commands.updateNote(note?.note_id, 'Updated summary');
 await commands.deleteNote(note?.note_id);
 ```
+
+`schemaName` maps to the RFC `schema_name` filter and matches notes by `models[].type`.
+In JWT-backed data-plane flows, trusted identity and project context come from JWT claims, not
+from `owner_id` query semantics.
 
 ## CLI
 
@@ -52,40 +56,57 @@ bun run src/cli.ts --access-key-id AK_xxx --access-secret SK_xxx --base-url http
 # bun run cli -- --access-key-id AK_xxx --access-secret SK_xxx deepping
 ```
 
-Supported commands mirror the Dart client:
+Current CLI surface (`bun run src/cli.ts --help`):
 
-- `deepping [--echo text]`
-- `auth-health --bearer <token>`
-- `auth-jwks --bearer <token>` (resolves URL from JWT `iss`: `<issuer>/.well-known/jwks.json`)
-- `auth-login --provider <google|supabase|firebase|apple> --id-token <token> --project-id <project-id> [--login-path-template </api/v1/login/{provider}>]`
-- `auth-bind --provider <google|supabase|firebase|apple> --id-token <token> --code <code> --project-id <project-id> [--binding-path-template </api/v1/id_bindings/{provider}>]`
-- `auth-exchange` (alias of `auth-login`)
-- `auth-provision` (alias of `auth-bind`)
-- `auth-refresh --refresh-token <token> --bearer <token> [--project-id <project-id>]`
-- `auth-refresh-with-access --access-token <token> --refresh-token <token> [--project-id <project-id>]` (sends refresh token in `Authorization` header and access token in request body)
-- `create-note --type <mime> [--data text|--file path] [--role role] [--visit-id <id>] [--owner-id <id>]`
-- `get-note --note-id <uuid>`
-- `get-note-model-sync --note-id <uuid>`
-- `retry-note-model-sync --note-id <uuid>`
-- `list-leads [--page N] [--items-per-page N] [--order-by field:asc|desc]`
-- `list-notes [--page N] [--items-per-page N] [--summary text] [--schema-name <name>]`
-- `update-lead --lead-id <uuid> --file <path-to-json>`
-- `update-note --note-id <uuid> --summary <text> [--owner-id <id>]`
-- `delete-note --note-id <uuid>`
-- `delete-visit --visit-row-id <uuid>`
-- `search --schemas <lead,visit,...> --q <text> [--page N] [--page-size N]`
-- `advanced-query --file <path-to-json>`
 - `create-session --bearer <token> [--owner-id <id>] [--project-id <id>] [--session-id <id>] [--file <path-to-json>]`
 - `get-session --session-id <id> --bearer <token>`
 - `send-session-message --session-id <id> --bearer <token> [--file <path-to-json>|--user-input <text> [--input-type <mime>] [--confirmed <true|false>]]`
 - `list-session-messages --session-id <id> --bearer <token>`
 - `run-operation --bearer <token> [--file <path-to-json>|--user-input <text> [--input-type <mime>] [--confirmed <true|false>]]`
 
-Notes API alignment with current data plane implementation:
-- Note create compatibility still accepts optional `owner_id`, but ownership for Notes routing is derived from JWT claims
-- Note read/delete operations derive ownership from JWT claims instead of `owner_id` query params
-- CRUD-agent session and operation ownership are derived from JWT claims instead of `owner_id` query params
-- `list-notes` supports `schema_name`
+```text
+deepping                 [--echo <text>]
+auth-health              --bearer <token>
+auth-jwks                --bearer <token>
+auth-login               --provider <google|supabase|firebase|apple> --id-token <token> --project-id <project-id> [--login-path-template </api/v1/login/{provider}>]
+auth-bind                --provider <google|supabase|firebase|apple> --id-token <token> --code <code> --project-id <project-id> [--binding-path-template </api/v1/id_bindings/{provider}>]
+auth-exchange            Alias of auth-login
+auth-refresh             --refresh-token <token> --bearer <token> [--project-id <project-id>]
+auth-refresh-with-access --access-token <token> --refresh-token <token> [--project-id <project-id>]
+auth-revoke              --jti <id> [--reason <text>] --bearer <token>
+auth-provision           Alias of auth-bind
+create-activity          --type <call|line|email|visit|note> --direction <inbound|outbound> --user-id <id> --summary <text> [--id <id>] [--at <iso>] [--next-follow-up-at <iso>] [--lead-id <id>]
+list-activities          [--user-id <id>] [--lead-id <id>] [--page N] [--items-per-page N]
+create-lead              --name <name> --pipeline <buy|rent|sell|landlord> --tenant-id <id> --owner-user-id <id> [--id <uuid>] [--email <email>] [--phone <phone>] [--stage <stage>] [--status <status>] [--source-channel <channel>] [--source-name <name>] [--tags <tag1,tag2>] [--file <path>]
+list-leads               [--lead-id <uuid>] [--page N] [--items-per-page N] [--order-by field:asc|desc]
+get-lead                 --lead-id <uuid>
+update-lead              --lead-id <uuid> --file <path-to-json>
+create-visit             --lead-id <id> --user-id <id> --property-id <id> [--id <uuid>] [--scheduled-start-at <iso>] [--scheduled-end-at <iso>] [--status <scheduled|visited|no_show|canceled|rescheduled>] [--feedback <text>] [--attendees <name1,name2>] [--next-follow-up-at <iso>] [--file <path>]
+list-visits              [--lead-id <id>] [--user-id <id>] [--property-id <id>] [--page N] [--items-per-page N]
+delete-visit             --visit-row-id <uuid>
+list-logs                [--log-id <id>] [--lead-id <id>] [--visit-id <id>] [--owner-id <id>] [--page N] [--items-per-page N]
+create-note              --type <mime> [--data <text>|--file <path>] [--role <role>] [--visit-id <id>] [--owner-id <id>]
+get-note                 --note-id <uuid>
+get-note-model-sync      --note-id <uuid>
+retry-note-model-sync    --note-id <uuid>
+list-notes               [--page N] [--items-per-page N] [--summary <text>] [--schema-name <name>]
+update-note              --note-id <uuid> --summary <text> [--owner-id <id>]
+delete-note              --note-id <uuid>
+search                   --schemas <lead,visit,...> --q <text> [--page N] [--page-size N]
+advanced-query           --file <path-to-json>
+create-session           --bearer <token> [--owner-id <id>] [--project-id <id>] [--session-id <id>] [--file <path-to-json>]
+get-session              --session-id <id> --bearer <token>
+send-session-message     --session-id <id> --bearer <token> [--file <path-to-json>|--user-input <text> [--input-type <mime>] [--confirmed <true|false>]]
+list-session-messages    --session-id <id> --bearer <token>
+run-operation            --bearer <token> [--file <path-to-json>|--user-input <text> [--input-type <mime>] [--confirmed <true|false>]]
+```
+
+RFC alignment with the current data-plane behavior:
+- `list-notes` supports the RFC `schema_name` filter (`schemaName` in SDK, `--schema-name` in CLI) and matches `models[].type`
+- Notes read/delete flows do not rely on `owner_id` query parameters; trusted identity comes from JWT `sub` / `user_id`
+- CRUD-agent session and operation flows derive trusted `owner_id` and `project_id` from JWT claims
+- Compatibility request-body fields such as `owner_id` or `project_id` may still be accepted by some endpoints and CLI commands, but the server treats JWT claims as authoritative in trusted flows
+- `DELETE /api/ai/v1/notes/{note_id}` does not require an `owner_id` query parameter
 - `create-note` sends one default `log` model when `models` is not provided, with runtime `id/visitId` and `${note.*}` template bindings
 
 ## Token-based E2E script
