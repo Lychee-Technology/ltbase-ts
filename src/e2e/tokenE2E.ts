@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
+import { ApiResponse, QueryParams, RequestOptions } from '../api/client';
 import { AuthServiceClient } from '../auth/client';
+import { CommandHandler } from '../commands/commandHandler';
 
 type ArgValue = string | boolean;
 
@@ -432,6 +434,85 @@ class BearerApiClient {
   }
 }
 
+class BearerCommandClient {
+  private readonly baseUrl: string;
+  private readonly verbose: boolean;
+  private readonly fetchImpl: typeof fetch;
+  private readonly accessTokenProvider: () => string;
+
+  constructor(
+    options: {
+      baseUrl: string;
+      verbose: boolean;
+      accessTokenProvider: () => string;
+      fetchImpl?: typeof fetch;
+    },
+  ) {
+    this.baseUrl = options.baseUrl;
+    this.verbose = options.verbose;
+    this.accessTokenProvider = options.accessTokenProvider;
+    this.fetchImpl = options.fetchImpl ?? fetch;
+  }
+
+  async request({ method, path, queryParams, body }: RequestOptions): Promise<ApiResponse> {
+    const url = new URL(path, this.baseUrl);
+    if (queryParams) {
+      const entries = Object.entries(queryParams).filter(([, value]) => value !== undefined);
+      entries.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+      for (const [key, value] of entries) {
+        url.searchParams.append(key, String(value));
+      }
+    }
+
+    const bodyString = body === undefined || body === null ? undefined : JSON.stringify(body);
+    const token = this.accessTokenProvider();
+
+    if (this.verbose) {
+      console.log('----------------------------------------');
+      console.log(`Command Request: ${method.toUpperCase()} ${url.toString()}`);
+      console.log(`Authorization: Bearer ${shortToken(token)}`);
+      if (bodyString) console.log(`Body: ${bodyString}`);
+      console.log('----------------------------------------');
+    }
+
+    const response = await this.fetchImpl(url.toString(), {
+      method,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json; charset=UTF-8',
+        'Accept-Encoding': 'gzip',
+      },
+      body: bodyString,
+    });
+
+    const rawBody = await decodeResponse(response);
+
+    if (this.verbose) {
+      console.log(`Response Status: ${response.status}`);
+      console.log(`Response Body: ${rawBody}`);
+      console.log('----------------------------------------');
+    }
+
+    return new ApiResponse(response.status, rawBody, response.headers);
+  }
+
+  get(path: string, queryParams?: QueryParams): Promise<ApiResponse> {
+    return this.request({ method: 'GET', path, queryParams });
+  }
+
+  post(path: string, body?: unknown): Promise<ApiResponse> {
+    return this.request({ method: 'POST', path, body });
+  }
+
+  put(path: string, body?: unknown): Promise<ApiResponse> {
+    return this.request({ method: 'PUT', path, body });
+  }
+
+  delete(path: string, queryParams?: QueryParams): Promise<ApiResponse> {
+    return this.request({ method: 'DELETE', path, queryParams });
+  }
+}
+
 async function decodeResponse(response: Response): Promise<string> {
   const contentType = response.headers.get('content-type') ?? '';
   const charsetMatch = contentType.match(/charset=([^;]+)/i);
@@ -575,11 +656,53 @@ function previewRecordIds(items: unknown[], limit = 5): string {
     .join(', ');
 }
 
+function extractLogNoteId(record: Record<string, unknown>): string | null {
+  const attributes = normalizeRecord(record.attributes);
+  const data = normalizeRecord(record.data);
+  const attributesData = normalizeRecord(attributes.data);
+  const candidateContainers = [record, attributes, data, attributesData];
+  const candidateKeys = ['noteId', 'note_id'];
+
+  for (const container of candidateContainers) {
+    for (const key of candidateKeys) {
+      const value = container[key];
+      if (typeof value === 'string' && value.length > 0) {
+        return value;
+      }
+    }
+  }
+
+  return null;
+}
+
+function previewLogNoteFields(logItems: unknown[], limit = 5): string {
+  return logItems
+    .slice(0, limit)
+    .map((item, index) => {
+      const record = normalizeRecord(item);
+      const rowId = extractRecordRowId(record) ?? '(no-row-id)';
+      const attributes = normalizeRecord(record.attributes);
+      const data = normalizeRecord(record.data);
+      const extracted = extractLogNoteId(record) ?? '(none)';
+      const top = typeof (record.noteId ?? record.note_id) === 'string'
+        ? String(record.noteId ?? record.note_id)
+        : '(none)';
+      const attr = typeof (attributes.noteId ?? attributes.note_id) === 'string'
+        ? String(attributes.noteId ?? attributes.note_id)
+        : '(none)';
+      const dataField = typeof (data.noteId ?? data.note_id) === 'string'
+        ? String(data.noteId ?? data.note_id)
+        : '(none)';
+      return `#${index + 1}{row_id=${rowId},extracted=${extracted},top=${top},attributes=${attr},data=${dataField}}`;
+    })
+    .join(' | ');
+}
+
 function findLogForNote(logItems: unknown[], noteId: string): Record<string, unknown> | null {
   for (const item of logItems) {
     const record = normalizeRecord(item);
-    const maybeNoteId = record.noteId ?? record.note_id;
-    if (typeof maybeNoteId === 'string' && maybeNoteId === noteId) {
+    const maybeNoteId = extractLogNoteId(record);
+    if (maybeNoteId === noteId) {
       return record;
     }
   }
@@ -723,6 +846,12 @@ async function runE2E(options: E2EOptions): Promise<void> {
   }
 
   const api = new BearerApiClient(options.apiBaseUrl, options.verbose);
+  const commandClient = new BearerCommandClient({
+    baseUrl: options.apiBaseUrl,
+    verbose: options.verbose,
+    accessTokenProvider: () => dataApiAccessToken,
+  });
+  const commands = new CommandHandler(commandClient);
   let noteIdForCleanup: string | null = null;
   let leadRowIdForCleanup: string | null = null;
   let visitRowIdForCleanup: string | null = null;
@@ -743,27 +872,20 @@ async function runE2E(options: E2EOptions): Promise<void> {
     console.log(`  request model visitId: ${modelDefinition.resolvedVisitId}`);
 
     const createNoteStartedAt = Date.now();
-    const createNoteResult = await api.request({
-      method: 'POST',
-      path: '/api/ai/v1/notes',
-      bearerToken: dataApiAccessToken,
-      body: {
-        owner_id: options.ownerId,
-        type: 'text/plain',
-        data: options.noteText,
-        role: options.role,
-        models: modelDefinition.models,
-      },
+    const createNoteResult = await commands.createNote({
+      type: 'text/plain',
+      data: options.noteText,
+      role: options.role,
+      models: modelDefinition.models,
     });
     const createNoteElapsedMs = Date.now() - createNoteStartedAt;
-    console.log(`  response status: ${createNoteResult.status} (${createNoteElapsedMs} ms)`);
-    assert2xx(createNoteResult, 'create note');
+    console.log(`  create note elapsed: ${createNoteElapsedMs} ms`);
 
-    const noteId = extractNoteId(createNoteResult.data);
+    const noteId = extractNoteId(createNoteResult);
     if (!noteId) {
-      throw new Error(`create note response missing note_id: ${createNoteResult.rawBody}`);
+      throw new Error(`create note response missing note_id: ${JSON.stringify(createNoteResult)}`);
     }
-    const createNoteRecord = normalizeRecord(createNoteResult.data);
+    const createNoteRecord = normalizeRecord(createNoteResult);
     const createdAt = createNoteRecord.created_at ?? createNoteRecord.createdAt;
     const updatedAt = createNoteRecord.updated_at ?? createNoteRecord.updatedAt;
     const summary = createNoteRecord.summary;
@@ -780,18 +902,12 @@ async function runE2E(options: E2EOptions): Promise<void> {
     console.log(`  created note_id: ${noteId}`);
 
     console.log('[4/7] list notes');
-    const listNotesResult = await api.request({
-      method: 'GET',
-      path: '/api/ai/v1/notes',
-      bearerToken: dataApiAccessToken,
-      queryParams: {
-        owner_id: options.ownerId,
-        page: 1,
-        items_per_page: 20,
-      },
+    const listNotesResult = await commands.listNotes({
+      schemaName: 'log',
+      page: 1,
+      itemsPerPage: 20,
     });
-    assert2xx(listNotesResult, 'list notes');
-    const noteItems = extractArray(listNotesResult.data);
+    const noteItems = extractArray(listNotesResult);
     const noteExists = noteItems.some((item) => {
       const record = normalizeRecord(item);
       return (record.note_id === noteId || record.noteId === noteId);
@@ -804,64 +920,46 @@ async function runE2E(options: E2EOptions): Promise<void> {
     console.log('[5/7] list logs and match noteId');
     let matchedLog: Record<string, unknown> | null = null;
     for (let i = 1; i <= options.logPollAttempts; i += 1) {
-      const tokenCandidates = [dataApiAccessToken];
-      if (options.accessToken !== dataApiAccessToken) {
-        tokenCandidates.push(options.accessToken);
-      }
-
-      let listLogsResult: HttpResult | null = null;
-      let listLogsTokenUsed = dataApiAccessToken;
-      for (const candidateToken of tokenCandidates) {
-        const result = await api.request({
-          method: 'GET',
-          path: '/api/v1/log',
-          bearerToken: candidateToken,
-          queryParams: {
-            ownerId: options.ownerId,
-            page: 1,
-            items_per_page: 20,
-            order_by: 'updatedAt:desc',
-          },
+      let listLogsResult: unknown;
+      try {
+        listLogsResult = await commands.listLogs({
+          ownerId: options.ownerId,
+          page: 1,
+          itemsPerPage: 20,
         });
-
-        if (result.status === 401 && candidateToken !== tokenCandidates[tokenCandidates.length - 1]) {
-          console.warn(
-            `  [warn] list logs unauthorized with token ${shortToken(candidateToken)}; retrying with alternate token`,
-          );
-          continue;
+      } catch (err) {
+        const errMsg = (err as Error).message;
+        const canRetryWithInputToken =
+          options.accessToken !== dataApiAccessToken && /(^|[^0-9])401([^0-9]|$)/.test(errMsg);
+        if (!canRetryWithInputToken) {
+          throw new Error(`list logs failed: ${errMsg}`);
         }
 
-        listLogsResult = result;
-        listLogsTokenUsed = candidateToken;
-        break;
+        console.warn(
+          `  [warn] list logs unauthorized with token ${shortToken(dataApiAccessToken)}; retrying with input access token`,
+        );
+        dataApiAccessToken = options.accessToken;
+        console.log(`  switched data API token for logs: ${shortToken(dataApiAccessToken)}`);
+        listLogsResult = await commands.listLogs({
+          ownerId: options.ownerId,
+          page: 1,
+          itemsPerPage: 20,
+        });
       }
 
-      if (!listLogsResult) {
-        throw new Error('list logs request failed before receiving response');
-      }
-
-      if (listLogsTokenUsed !== dataApiAccessToken) {
-        console.log(`  switched data API token for logs: ${shortToken(listLogsTokenUsed)}`);
-        dataApiAccessToken = listLogsTokenUsed;
-      }
-
-      assert2xx(listLogsResult, 'list logs');
-
-      const logs = extractArray(listLogsResult.data);
-      const noteIdPreview = logs
-        .slice(0, 5)
-        .map((item) => {
-          const record = normalizeRecord(item);
-          const value = record.noteId ?? record.note_id;
-          return typeof value === 'string' && value.length > 0 ? value : '(none)';
-        })
-        .join(', ');
+      const logs = extractArray(listLogsResult);
+      const noteIdPreview = previewLogNoteFields(logs, 5);
       console.log(
-        `  logs poll ${i}/${options.logPollAttempts}: count=${logs.length}, first_note_ids=[${noteIdPreview}]`,
+        `  logs poll ${i}/${options.logPollAttempts}: count=${logs.length}, target_note_id=${noteId}, first_note_fields=[${noteIdPreview}]`,
       );
+      const logsPayloadJson = JSON.stringify(listLogsResult, null, 2);
+      console.log('  logs poll raw response JSON:');
+      console.log(logsPayloadJson ?? String(listLogsResult));
 
       matchedLog = findLogForNote(logs, noteId);
       if (matchedLog) {
+        console.log('  matched log JSON:');
+        console.log(JSON.stringify(matchedLog, null, 2));
         break;
       }
 
@@ -880,7 +978,9 @@ async function runE2E(options: E2EOptions): Promise<void> {
     const nowIso = new Date().toISOString();
     const leadId = randomUUID();
     const phoneDigits = `${Date.now()}`.slice(-8).padStart(8, '0');
-    const leadPayload = [
+    const leadName = `E2E Lead ${leadId.slice(0, 8)}`;
+    const leadPhone = `070${phoneDigits}`;
+    const leadPreviewPayload = [
       {
         id: leadId,
         tenantId: options.tenantId,
@@ -890,44 +990,40 @@ async function runE2E(options: E2EOptions): Promise<void> {
         pipeline: 'buy',
         stage: 'new',
         status: 'open',
-        source: {
-          channel: 'other',
-        },
+        source: { channel: 'other' },
         contact: {
           isAnonymous: false,
-          name: `E2E Lead ${leadId.slice(0, 8)}`,
-          nameNative: `E2E Lead ${leadId.slice(0, 8)}`,
-          primaryPhone: `070${phoneDigits}`,
-          phones: [`070${phoneDigits}`],
+          name: leadName,
+          nameNative: leadName,
+          primaryPhone: leadPhone,
+          phones: [leadPhone],
         },
         requirement: {},
       },
     ];
-    console.log(`  lead create request: POST /api/v1/lead (items=${leadPayload.length})`);
-    console.log(`  lead create body: ${JSON.stringify(leadPayload)}`);
-    const createLeadResult = await api.request({
-      method: 'POST',
-      path: '/api/v1/lead',
-      bearerToken: dataApiAccessToken,
-      body: leadPayload,
+    console.log('  lead create request: POST /api/v1/lead');
+    console.log(`  lead create body: ${JSON.stringify(leadPreviewPayload)}`);
+    const createLeadResult = await commands.createLead({
+      id: leadId,
+      tenantId: options.tenantId,
+      ownerUserId: options.ownerUserId,
+      pipeline: 'buy',
+      stage: 'new',
+      status: 'open',
+      name: leadName,
+      phone: leadPhone,
+      sourceChannel: 'other',
     });
-    assert2xx(createLeadResult, 'create lead');
-    const leadRowId = extractRowId(createLeadResult.data) ?? leadId;
+    const leadRowId = extractRowId(createLeadResult) ?? leadId;
     leadRowIdForCleanup = leadRowId;
     console.log(`  lead created: id=${leadId}, row_id=${leadRowId}`);
 
-    const listLeadsResult = await api.request({
-      method: 'GET',
-      path: '/api/v1/lead',
-      bearerToken: dataApiAccessToken,
-      queryParams: {
-        id: `equals:${leadId}`,
-        page: 1,
-        items_per_page: 20,
-      },
+    const listLeadsResult = await commands.listLeads({
+      leadId,
+      page: 1,
+      itemsPerPage: 20,
     });
-    assert2xx(listLeadsResult, 'list leads');
-    const leadItems = extractArray(listLeadsResult.data);
+    const leadItems = extractArray(listLeadsResult);
     const leadPreview = previewRecordIds(leadItems);
     console.log(`  lead list: count=${leadItems.length}, first_ids=[${leadPreview}]`);
     const listedLead = findEntityByIdentity(leadItems, leadId, leadRowId);
@@ -935,13 +1031,8 @@ async function runE2E(options: E2EOptions): Promise<void> {
       throw new Error(`created lead not found in list response: lead_id=${leadId}, row_id=${leadRowId}`);
     }
 
-    const getLeadResult = await api.request({
-      method: 'GET',
-      path: `/api/v1/lead/${encodeURIComponent(leadRowId)}`,
-      bearerToken: dataApiAccessToken,
-    });
-    assert2xx(getLeadResult, 'get lead');
-    const gotLeadRowId = extractRowId(getLeadResult.data);
+    const getLeadResult = await commands.getLead(leadRowId);
+    const gotLeadRowId = extractRowId(getLeadResult);
     if (!gotLeadRowId) {
       throw new Error('get lead response missing row_id');
     }
@@ -959,44 +1050,41 @@ async function runE2E(options: E2EOptions): Promise<void> {
     console.log('  lead update ok');
 
     const visitEntityId = options.visitId ?? randomUUID();
-    const visitPayload = [
+    const visitEndAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    const visitPreviewPayload = [
       {
         id: visitEntityId,
         leadId,
         userId: options.ownerUserId,
         propertyId: options.propertyId,
         scheduledStartAt: nowIso,
-        scheduledEndAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+        scheduledEndAt: visitEndAt,
         status: 'scheduled',
         createdAt: nowIso,
         updatedAt: nowIso,
       },
     ];
-    console.log(`  visit create request: POST /api/v1/visit (items=${visitPayload.length})`);
-    console.log(`  visit create body: ${JSON.stringify(visitPayload)}`);
-    const createVisitResult = await api.request({
-      method: 'POST',
-      path: '/api/v1/visit',
-      bearerToken: dataApiAccessToken,
-      body: visitPayload,
+    console.log('  visit create request: POST /api/v1/visit');
+    console.log(`  visit create body: ${JSON.stringify(visitPreviewPayload)}`);
+    const createVisitResult = await commands.createVisit({
+      id: visitEntityId,
+      leadId,
+      userId: options.ownerUserId,
+      propertyId: options.propertyId,
+      scheduledStartAt: nowIso,
+      scheduledEndAt: visitEndAt,
+      status: 'scheduled',
     });
-    assert2xx(createVisitResult, 'create visit');
-    const visitRowId = extractRowId(createVisitResult.data) ?? visitEntityId;
+    const visitRowId = extractRowId(createVisitResult) ?? visitEntityId;
     visitRowIdForCleanup = visitRowId;
     console.log(`  visit created: id=${visitEntityId}, row_id=${visitRowId}`);
 
-    const listVisitsResult = await api.request({
-      method: 'GET',
-      path: '/api/v1/visit',
-      bearerToken: dataApiAccessToken,
-      queryParams: {
-        id: `equals:${visitEntityId}`,
-        page: 1,
-        items_per_page: 20,
-      },
+    const listVisitsResult = await commands.listVisits({
+      leadId,
+      page: 1,
+      itemsPerPage: 20,
     });
-    assert2xx(listVisitsResult, 'list visits');
-    const visitItems = extractArray(listVisitsResult.data);
+    const visitItems = extractArray(listVisitsResult);
     const visitPreview = previewRecordIds(visitItems);
     console.log(`  visit list: count=${visitItems.length}, first_ids=[${visitPreview}]`);
     const listedVisit = findEntityByIdentity(visitItems, visitEntityId, visitRowId);
@@ -1056,20 +1144,13 @@ async function runE2E(options: E2EOptions): Promise<void> {
     logRowIdForCleanup = logRowId;
     console.log(`  log created: id=${manualLogId}, row_id=${logRowId}`);
 
-    const listManualLogsResult = await api.request({
-      method: 'GET',
-      path: '/api/v1/log',
-      bearerToken: dataApiAccessToken,
-      queryParams: {
-        id: `equals:${manualLogId}`,
-        ownerId: options.ownerId,
-        page: 1,
-        items_per_page: 20,
-        order_by: 'updatedAt:desc',
-      },
+    const listManualLogsResult = await commands.listLogs({
+      logId: `equals:${manualLogId}`,
+      ownerId: options.ownerId,
+      page: 1,
+      itemsPerPage: 20,
     });
-    assert2xx(listManualLogsResult, 'list logs for manual log');
-    const manualLogItems = extractArray(listManualLogsResult.data);
+    const manualLogItems = extractArray(listManualLogsResult);
     const manualLogPreview = previewRecordIds(manualLogItems);
     console.log(`  log list: count=${manualLogItems.length}, first_ids=[${manualLogPreview}]`);
     const listedManualLog = findEntityByIdentity(manualLogItems, manualLogId, logRowId);
@@ -1109,12 +1190,7 @@ async function runE2E(options: E2EOptions): Promise<void> {
     logRowIdForCleanup = null;
     console.log('  log delete ok');
 
-    const deleteVisitResult = await api.request({
-      method: 'DELETE',
-      path: `/api/v1/visit/${encodeURIComponent(visitRowId)}`,
-      bearerToken: dataApiAccessToken,
-    });
-    assert2xx(deleteVisitResult, 'delete visit');
+    await commands.deleteVisit(visitRowId);
     visitRowIdForCleanup = null;
     console.log('  visit delete ok');
 
@@ -1131,15 +1207,7 @@ async function runE2E(options: E2EOptions): Promise<void> {
       console.log('[7/7] cleanup skipped because --keep-note is set');
     } else {
       console.log('[7/7] delete note');
-      const deleteResult = await api.request({
-        method: 'DELETE',
-        path: `/api/ai/v1/notes/${encodeURIComponent(noteId)}`,
-        bearerToken: dataApiAccessToken,
-        queryParams: {
-          owner_id: options.ownerId,
-        },
-      });
-      assert2xx(deleteResult, 'delete note');
+      await commands.deleteNote(noteId);
       noteIdForCleanup = null;
       console.log('  cleanup done');
     }
@@ -1166,12 +1234,7 @@ async function runE2E(options: E2EOptions): Promise<void> {
     if (visitRowIdForCleanup) {
       console.log(`[cleanup] attempt delete visit after failure: ${visitRowIdForCleanup}`);
       try {
-        const cleanupVisitResult = await api.request({
-          method: 'DELETE',
-          path: `/api/v1/visit/${encodeURIComponent(visitRowIdForCleanup)}`,
-          bearerToken: dataApiAccessToken,
-        });
-        assert2xx(cleanupVisitResult, 'cleanup delete visit');
+        await commands.deleteVisit(visitRowIdForCleanup);
         visitRowIdForCleanup = null;
         console.log('[cleanup] visit done');
       } catch (cleanupErr) {
@@ -1198,15 +1261,7 @@ async function runE2E(options: E2EOptions): Promise<void> {
     if (!options.keepNote && noteIdForCleanup) {
       console.log(`[cleanup] attempt delete note after failure: ${noteIdForCleanup}`);
       try {
-        const cleanupResult = await api.request({
-          method: 'DELETE',
-          path: `/api/ai/v1/notes/${encodeURIComponent(noteIdForCleanup)}`,
-          bearerToken: dataApiAccessToken,
-          queryParams: {
-            owner_id: options.ownerId,
-          },
-        });
-        assert2xx(cleanupResult, 'cleanup delete note');
+        await commands.deleteNote(noteIdForCleanup);
         console.log('[cleanup] done');
       } catch (cleanupErr) {
         console.error(`[cleanup] failed: ${(cleanupErr as Error).message}`);

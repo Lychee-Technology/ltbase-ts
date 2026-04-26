@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
-import { ApiClient, ApiResponse, QueryParams } from '../api/client';
+import { ApiResponse, QueryParams, RequestOptions } from '../api/client';
 
 export interface CreateActivityOptions {
   id: string;
@@ -14,7 +14,7 @@ export interface CreateActivityOptions {
 }
 
 export interface CreateNoteOptions {
-  ownerId: string;
+  ownerId?: string;
   type: string;
   data?: string;
   filePath?: string;
@@ -116,10 +116,18 @@ export interface SessionMessageRequest {
   [key: string]: unknown;
 }
 
-export class CommandHandler {
-  private readonly client: ApiClient;
+export interface CommandApiClient {
+  request(options: RequestOptions): Promise<ApiResponse>;
+  get(path: string, queryParams?: QueryParams): Promise<ApiResponse>;
+  post(path: string, body?: unknown): Promise<ApiResponse>;
+  put(path: string, body?: unknown): Promise<ApiResponse>;
+  delete(path: string, queryParams?: QueryParams): Promise<ApiResponse>;
+}
 
-  constructor(client: ApiClient) {
+export class CommandHandler {
+  private readonly client: CommandApiClient;
+
+  constructor(client: CommandApiClient) {
     this.client = client;
   }
 
@@ -149,50 +157,41 @@ export class CommandHandler {
     const noteData = await this.loadNoteData({ type, data, filePath });
     const models = options.models ?? this.buildDefaultLogModels(visitId);
     const body = {
-      owner_id: ownerId,
+      ...(ownerId ? { owner_id: ownerId } : {}),
       type,
       data: noteData,
       role: role ?? 'real_estate',
       models,
     };
 
+    console.log('Creating note with body:', body);
     const response = await this.client.post('/api/ai/v1/notes', body);
     this.assertSuccess(response, 'Failed to create note');
     return response.json();
   }
 
-  async getNote(ownerId: string, noteId: string) {
-    const response = await this.client.get(`/api/ai/v1/notes/${noteId}`, { owner_id: ownerId });
+  async getNote(noteId: string) {
+    const response = await this.client.get(`/api/ai/v1/notes/${noteId}`);
     this.assertSuccess(response, 'Failed to get note');
     return response.json();
   }
 
-  async getNoteModelSync(ownerId: string, noteId: string) {
-    const response = await this.client.get(
-      `/api/ai/v1/notes/${encodeURIComponent(noteId)}/model_sync`,
-      { owner_id: ownerId },
-    );
+  async getNoteModelSync(noteId: string) {
+    const response = await this.client.get(`/api/ai/v1/notes/${encodeURIComponent(noteId)}/model_sync`);
     this.assertSuccess(response, 'Failed to get note model sync status');
     return response.json();
   }
 
-  async retryNoteModelSync(ownerId: string, noteId: string) {
+  async retryNoteModelSync(noteId: string) {
     const response = await this.client.request({
       method: 'POST',
       path: `/api/ai/v1/notes/${encodeURIComponent(noteId)}/model_sync`,
-      queryParams: { owner_id: ownerId },
     });
     this.assertSuccess(response, 'Failed to retry note model sync');
     return response.json();
   }
 
   async listNotes(options: ListNotesOptions = {}) {
-    if (!options.ownerId) {
-      throw new Error('owner_id is required for listNotes');
-    }
-    if (options.schemaName) {
-      throw new Error('schema_name is not supported by current data plane implementation');
-    }
     if (options.itemsPerPage !== undefined && options.itemsPerPage > 100) {
       throw new Error('items_per_page must be <= 100');
     }
@@ -201,7 +200,7 @@ export class CommandHandler {
     if (options.page !== undefined) params.page = options.page;
     if (options.itemsPerPage !== undefined) params.items_per_page = options.itemsPerPage;
     if (options.summary) params.summary = options.summary;
-    params.owner_id = options.ownerId;
+    if (options.schemaName) params.schema_name = options.schemaName;
 
     const response = await this.client.get('/api/ai/v1/notes', params);
     this.assertSuccess(response, 'Failed to list notes');
@@ -236,8 +235,8 @@ export class CommandHandler {
     return response.json();
   }
 
-  async deleteNote(noteId: string, ownerId: string) {
-    const response = await this.client.delete(`/api/ai/v1/notes/${noteId}`, { owner_id: ownerId });
+  async deleteNote(noteId: string) {
+    const response = await this.client.delete(`/api/ai/v1/notes/${noteId}`);
     this.assertSuccess(response, 'Failed to delete note');
     return response.json();
   }

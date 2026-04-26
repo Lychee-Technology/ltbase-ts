@@ -5,6 +5,7 @@
   "description": "TypeScript SDK for LTBase (Bun runtime)",
   "license": "MIT",
   "scripts": {
+    "test": "bun test",
     "check": "bunx --bun tsc --noEmit",
     "cli": "bun run src/cli.ts",
     "auth-test": "bun run src/cli.ts auth-health --bearer $AUTH_BEARER",
