@@ -76,14 +76,16 @@ Supported commands mirror the Dart client:
 - `search --schemas <lead,visit,...> --q <text> [--page N] [--page-size N]`
 - `advanced-query --file <path-to-json>`
 - `create-session --owner-id <id> [--session-id <id>] [--file <path-to-json>]`
-- `get-session --session-id <id> --owner-id <id>`
-- `send-session-message --session-id <id> --owner-id <id> [--file <path-to-json>|--user-input <text> [--input-type <mime>] [--confirmed <true|false>]]`
-- `list-session-messages --session-id <id> --owner-id <id>`
-- `run-operation --owner-id <id> [--file <path-to-json>|--user-input <text> [--input-type <mime>] [--confirmed <true|false>]]`
+- `get-session --session-id <id>`
+- `send-session-message --session-id <id> [--file <path-to-json>|--user-input <text> [--input-type <mime>] [--confirmed <true|false>]]`
+- `list-session-messages --session-id <id>`
+- `run-operation [--file <path-to-json>|--user-input <text> [--input-type <mime>] [--confirmed <true|false>]]`
 
 Notes API alignment with current data plane implementation:
-- Notes ownership is derived from JWT claims; `owner_id` is optional compatibility input on create and not used for request routing on other Notes calls
-- `list-notes` supports the `schema_name` filter
+- Note create compatibility still accepts optional `owner_id`, but ownership for Notes routing is derived from JWT claims
+- Note read/delete operations derive ownership from JWT claims instead of `owner_id` query params
+- CRUD-agent session and operation ownership are derived from JWT claims instead of `owner_id` query params
+- `list-notes` supports `schema_name`
 - `create-note` sends one default `log` model when `models` is not provided, with runtime `id/visitId` and `${note.*}` template bindings
 
 ## Token-based E2E script

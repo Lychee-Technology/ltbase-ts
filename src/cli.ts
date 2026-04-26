@@ -226,10 +226,10 @@ Commands:
   search                 --schemas <lead,visit,...> --q <text> [--page N] [--page-size N]
   advanced-query         --file <path-to-json>
   create-session         --owner-id <id> [--session-id <id>] [--file <path-to-json>]
-  get-session            --session-id <id> --owner-id <id>
-  send-session-message   --session-id <id> --owner-id <id> [--file <path-to-json>|--user-input <text> [--input-type <mime>] [--confirmed <true|false>]]
-  list-session-messages  --session-id <id> --owner-id <id>
-  run-operation          --owner-id <id> [--file <path-to-json>|--user-input <text> [--input-type <mime>] [--confirmed <true|false>]]
+  get-session            --session-id <id>
+  send-session-message   --session-id <id> [--file <path-to-json>|--user-input <text> [--input-type <mime>] [--confirmed <true|false>]]
+  list-session-messages  --session-id <id>
+  run-operation          [--file <path-to-json>|--user-input <text> [--input-type <mime>] [--confirmed <true|false>]]
 `);
 }
 
@@ -589,16 +589,12 @@ async function main() {
         break;
       }
       case 'get-session': {
-        const payload = await handler.getSession(
-          requiredString(params, 'session-id'),
-          requiredString(params, 'owner-id'),
-        );
+        const payload = await handler.getSession(requiredString(params, 'session-id'));
         console.log(JSON.stringify(payload, null, 2));
         break;
       }
       case 'send-session-message': {
         const sessionId = requiredString(params, 'session-id');
-        const ownerId = requiredString(params, 'owner-id');
         const filePath = optionalString(params, 'file');
         const confirmed = optionalBoolean(params, 'confirmed');
         const body = filePath
@@ -608,20 +604,16 @@ async function main() {
               input_type: optionalString(params, 'input-type') ?? 'text/plain',
               ...(confirmed !== undefined ? { confirmed } : {}),
             };
-        const payload = await handler.sendSessionMessage(sessionId, ownerId, body);
+        const payload = await handler.sendSessionMessage(sessionId, body);
         console.log(JSON.stringify(payload, null, 2));
         break;
       }
       case 'list-session-messages': {
-        const payload = await handler.listSessionMessages(
-          requiredString(params, 'session-id'),
-          requiredString(params, 'owner-id'),
-        );
+        const payload = await handler.listSessionMessages(requiredString(params, 'session-id'));
         console.log(JSON.stringify(payload, null, 2));
         break;
       }
       case 'run-operation': {
-        const ownerId = requiredString(params, 'owner-id');
         const filePath = optionalString(params, 'file');
         const confirmed = optionalBoolean(params, 'confirmed');
         const body = filePath
@@ -631,7 +623,7 @@ async function main() {
               input_type: optionalString(params, 'input-type') ?? 'text/plain',
               ...(confirmed !== undefined ? { confirmed } : {}),
             };
-        const payload = await handler.runOperation(ownerId, body);
+        const payload = await handler.runOperation(body);
         console.log(JSON.stringify(payload, null, 2));
         break;
       }

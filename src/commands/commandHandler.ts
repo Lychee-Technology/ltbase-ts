@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
-import { ApiResponse, QueryParams, RequestOptions } from '../api/client';
+import { ApiClient, ApiResponse, QueryParams } from '../api/client';
 
 export interface CreateActivityOptions {
   id: string;
@@ -30,7 +30,6 @@ export interface ListObjectsOptions {
 
 
 export interface ListNotesOptions extends ListObjectsOptions {
-  ownerId?: string;
   schemaName?: string;
   summary?: string;
 }
@@ -116,18 +115,10 @@ export interface SessionMessageRequest {
   [key: string]: unknown;
 }
 
-export interface CommandApiClient {
-  request(options: RequestOptions): Promise<ApiResponse>;
-  get(path: string, queryParams?: QueryParams): Promise<ApiResponse>;
-  post(path: string, body?: unknown): Promise<ApiResponse>;
-  put(path: string, body?: unknown): Promise<ApiResponse>;
-  delete(path: string, queryParams?: QueryParams): Promise<ApiResponse>;
-}
-
 export class CommandHandler {
-  private readonly client: CommandApiClient;
+  private readonly client: ApiClient;
 
-  constructor(client: CommandApiClient) {
+  constructor(client: ApiClient) {
     this.client = client;
   }
 
@@ -164,7 +155,6 @@ export class CommandHandler {
       models,
     };
 
-    console.log('Creating note with body:', body);
     const response = await this.client.post('/api/ai/v1/notes', body);
     this.assertSuccess(response, 'Failed to create note');
     return response.json();
@@ -199,8 +189,8 @@ export class CommandHandler {
     const params: QueryParams = {};
     if (options.page !== undefined) params.page = options.page;
     if (options.itemsPerPage !== undefined) params.items_per_page = options.itemsPerPage;
-    if (options.summary) params.summary = options.summary;
     if (options.schemaName) params.schema_name = options.schemaName;
+    if (options.summary) params.summary = options.summary;
 
     const response = await this.client.get('/api/ai/v1/notes', params);
     this.assertSuccess(response, 'Failed to list notes');
@@ -430,44 +420,35 @@ export class CommandHandler {
     return response.json();
   }
 
-  async getSession(sessionId: string, ownerId: string) {
-    const response = await this.client.get(
-      `/api/ai/v1/sessions/${encodeURIComponent(sessionId)}`,
-      { owner_id: ownerId },
-    );
+  async getSession(sessionId: string) {
+    const response = await this.client.get(`/api/ai/v1/sessions/${encodeURIComponent(sessionId)}`);
     this.assertSuccess(response, 'Failed to get session');
     return response.json();
   }
 
   async sendSessionMessage(
     sessionId: string,
-    ownerId: string,
     body: SessionMessageRequest | Record<string, unknown>,
   ) {
     const response = await this.client.request({
       method: 'POST',
       path: `/api/ai/v1/sessions/${encodeURIComponent(sessionId)}/messages`,
-      queryParams: { owner_id: ownerId },
       body,
     });
     this.assertSuccess(response, 'Failed to send session message');
     return response.json();
   }
 
-  async listSessionMessages(sessionId: string, ownerId: string) {
-    const response = await this.client.get(
-      `/api/ai/v1/sessions/${encodeURIComponent(sessionId)}/messages`,
-      { owner_id: ownerId },
-    );
+  async listSessionMessages(sessionId: string) {
+    const response = await this.client.get(`/api/ai/v1/sessions/${encodeURIComponent(sessionId)}/messages`);
     this.assertSuccess(response, 'Failed to list session messages');
     return response.json();
   }
 
-  async runOperation(ownerId: string, body: SessionMessageRequest | Record<string, unknown>) {
+  async runOperation(body: SessionMessageRequest | Record<string, unknown>) {
     const response = await this.client.request({
       method: 'POST',
       path: '/api/ai/v1/operations',
-      queryParams: { owner_id: ownerId },
       body,
     });
     this.assertSuccess(response, 'Failed to run operation');
