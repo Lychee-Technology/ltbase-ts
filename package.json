@@ -6,8 +6,8 @@
   "license": "MIT",
   "scripts": {
     "check": "bunx --bun tsc --noEmit",
-    "cli": "bun run src/cli.ts",
     "test": "bun test",
+    "cli": "bun run src/cli.ts",
     "auth-test": "bun run src/cli.ts auth-health --bearer $AUTH_BEARER",
     "e2e:token": "bun run src/e2e/tokenE2E.ts"
   },

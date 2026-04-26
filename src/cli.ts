@@ -62,6 +62,14 @@ const AUTH_COMMANDS = new Set([
   'auth-provision',
 ]);
 
+const BEARER_CRUD_AGENT_COMMANDS = new Set([
+  'create-session',
+  'get-session',
+  'send-session-message',
+  'list-session-messages',
+  'run-operation',
+]);
+
 const SUPPORTED_AUTH_PROVIDERS = ['google', 'supabase', 'firebase', 'apple'] as const;
 
 function parseArgs(argv: string[]): ParsedArgs {
@@ -164,6 +172,54 @@ async function readJsonObjectFile(filePath: string): Promise<Record<string, unkn
   return parsed as Record<string, unknown>;
 }
 
+async function requestJsonWithBearer(options: {
+  baseUrl: string;
+  method: string;
+  path: string;
+  bearerToken: string;
+  body?: unknown;
+  verbose?: boolean;
+}): Promise<unknown> {
+  const url = new URL(options.path, options.baseUrl);
+  const bodyString = options.body === undefined ? undefined : JSON.stringify(options.body);
+
+  if (options.verbose) {
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log(`Bearer Request: ${options.method.toUpperCase()} ${url.toString()}`);
+    console.log('Authorization: Bearer ***');
+    if (bodyString) console.log(`Body: ${bodyString}`);
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  }
+
+  const response = await fetch(url.toString(), {
+    method: options.method,
+    headers: {
+      Authorization: `Bearer ${options.bearerToken}`,
+      'Content-Type': 'application/json; charset=UTF-8',
+      'Accept-Encoding': 'gzip',
+    },
+    body: bodyString,
+  });
+
+  const responseBody = await response.text();
+
+  if (options.verbose) {
+    console.log(`Response Status: ${response.status}`);
+    console.log(`Response Body: ${responseBody}`);
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  }
+
+  if (response.status < 200 || response.status >= 300) {
+    throw new Error(`Bearer request failed: ${response.status} - ${responseBody}`);
+  }
+
+  try {
+    return JSON.parse(responseBody);
+  } catch (err) {
+    throw new Error(`Invalid JSON response: ${(err as Error).message}`);
+  }
+}
+
 function requireEnum<T extends string>(
   params: Record<string, ArgValue>,
   key: string,
@@ -225,11 +281,11 @@ Commands:
   delete-note            --note-id <uuid>
   search                 --schemas <lead,visit,...> --q <text> [--page N] [--page-size N]
   advanced-query         --file <path-to-json>
-  create-session         --owner-id <id> [--session-id <id>] [--file <path-to-json>]
-  get-session            --session-id <id>
-  send-session-message   --session-id <id> [--file <path-to-json>|--user-input <text> [--input-type <mime>] [--confirmed <true|false>]]
-  list-session-messages  --session-id <id>
-  run-operation          [--file <path-to-json>|--user-input <text> [--input-type <mime>] [--confirmed <true|false>]]
+  create-session         --bearer <token> [--owner-id <id>] [--project-id <id>] [--session-id <id>] [--file <path-to-json>]
+  get-session            --session-id <id> --bearer <token>
+  send-session-message   --session-id <id> --bearer <token> [--file <path-to-json>|--user-input <text> [--input-type <mime>] [--confirmed <true|false>]]
+  list-session-messages  --session-id <id> --bearer <token>
+  run-operation          --bearer <token> [--file <path-to-json>|--user-input <text> [--input-type <mime>] [--confirmed <true|false>]]
 `);
 }
 
@@ -245,6 +301,7 @@ async function main() {
 
     const baseUrl = optionalString(global, 'base-url') ?? 'https://api.example.com';
     const verbose = global.verbose === true;
+    const isBearerCrudCommand = command ? BEARER_CRUD_AGENT_COMMANDS.has(command) : false;
 
     if (isAuthCommand) {
       const authClient = new AuthServiceClient({
@@ -331,6 +388,104 @@ async function main() {
             idToken,
           );
           console.log('✓ Bind successful');
+          console.log(JSON.stringify(payload, null, 2));
+          break;
+        }
+        default:
+          printUsage();
+      }
+      return;
+    }
+
+    if (isBearerCrudCommand) {
+      const bearerToken = requiredString(params, 'bearer');
+
+      switch (command) {
+        case 'create-session': {
+          const ownerId = optionalString(params, 'owner-id');
+          const projectId = optionalString(params, 'project-id');
+          const sessionId = optionalString(params, 'session-id');
+          const filePath = optionalString(params, 'file');
+          const body = filePath ? await readJsonObjectFile(filePath) : {};
+          const payload = await requestJsonWithBearer({
+            baseUrl,
+            method: 'POST',
+            path: '/api/ai/v1/sessions',
+            bearerToken,
+            body: {
+              ...body,
+              ...(ownerId ? { owner_id: ownerId } : {}),
+              ...(projectId ? { project_id: projectId } : {}),
+              ...(sessionId ? { session_id: sessionId } : {}),
+            },
+            verbose,
+          });
+          console.log('✓ Session created');
+          console.log(JSON.stringify(payload, null, 2));
+          break;
+        }
+        case 'get-session': {
+          const payload = await requestJsonWithBearer({
+            baseUrl,
+            method: 'GET',
+            path: `/api/ai/v1/sessions/${encodeURIComponent(requiredString(params, 'session-id'))}`,
+            bearerToken,
+            verbose,
+          });
+          console.log(JSON.stringify(payload, null, 2));
+          break;
+        }
+        case 'send-session-message': {
+          const sessionId = requiredString(params, 'session-id');
+          const filePath = optionalString(params, 'file');
+          const confirmed = optionalBoolean(params, 'confirmed');
+          const body = filePath
+            ? await readJsonObjectFile(filePath)
+            : {
+                user_input: requiredString(params, 'user-input'),
+                input_type: optionalString(params, 'input-type') ?? 'text/plain',
+                ...(confirmed !== undefined ? { confirmed } : {}),
+              };
+          const payload = await requestJsonWithBearer({
+            baseUrl,
+            method: 'POST',
+            path: `/api/ai/v1/sessions/${encodeURIComponent(sessionId)}/messages`,
+            bearerToken,
+            body,
+            verbose,
+          });
+          console.log(JSON.stringify(payload, null, 2));
+          break;
+        }
+        case 'list-session-messages': {
+          const payload = await requestJsonWithBearer({
+            baseUrl,
+            method: 'GET',
+            path: `/api/ai/v1/sessions/${encodeURIComponent(requiredString(params, 'session-id'))}/messages`,
+            bearerToken,
+            verbose,
+          });
+          console.log(JSON.stringify(payload, null, 2));
+          break;
+        }
+        case 'run-operation': {
+          const filePath = optionalString(params, 'file');
+          const confirmed = optionalBoolean(params, 'confirmed');
+          const body = filePath
+            ? await readJsonObjectFile(filePath)
+            : {
+                user_input: requiredString(params, 'user-input'),
+                input_type: optionalString(params, 'input-type') ?? 'text/plain',
+                ...(confirmed !== undefined ? { confirmed } : {}),
+              };
+          const payload = await requestJsonWithBearer({
+            baseUrl,
+            method: 'POST',
+            path: '/api/ai/v1/operations',
+            bearerToken,
+            body,
+            verbose,
+          });
           console.log(JSON.stringify(payload, null, 2));
           break;
         }
@@ -571,59 +726,6 @@ async function main() {
       case 'advanced-query': {
         const body = await readJsonFile(requiredString(params, 'file'));
         const payload = await handler.advancedQuery(body);
-        console.log(JSON.stringify(payload, null, 2));
-        break;
-      }
-      case 'create-session': {
-        const ownerId = requiredString(params, 'owner-id');
-        const sessionId = optionalString(params, 'session-id');
-        const filePath = optionalString(params, 'file');
-        const body = filePath ? await readJsonObjectFile(filePath) : {};
-        const payload = await handler.createSession({
-          ...body,
-          owner_id: ownerId,
-          ...(sessionId ? { session_id: sessionId } : {}),
-        });
-        console.log('✓ Session created');
-        console.log(JSON.stringify(payload, null, 2));
-        break;
-      }
-      case 'get-session': {
-        const payload = await handler.getSession(requiredString(params, 'session-id'));
-        console.log(JSON.stringify(payload, null, 2));
-        break;
-      }
-      case 'send-session-message': {
-        const sessionId = requiredString(params, 'session-id');
-        const filePath = optionalString(params, 'file');
-        const confirmed = optionalBoolean(params, 'confirmed');
-        const body = filePath
-          ? await readJsonObjectFile(filePath)
-          : {
-              user_input: requiredString(params, 'user-input'),
-              input_type: optionalString(params, 'input-type') ?? 'text/plain',
-              ...(confirmed !== undefined ? { confirmed } : {}),
-            };
-        const payload = await handler.sendSessionMessage(sessionId, body);
-        console.log(JSON.stringify(payload, null, 2));
-        break;
-      }
-      case 'list-session-messages': {
-        const payload = await handler.listSessionMessages(requiredString(params, 'session-id'));
-        console.log(JSON.stringify(payload, null, 2));
-        break;
-      }
-      case 'run-operation': {
-        const filePath = optionalString(params, 'file');
-        const confirmed = optionalBoolean(params, 'confirmed');
-        const body = filePath
-          ? await readJsonObjectFile(filePath)
-          : {
-              user_input: requiredString(params, 'user-input'),
-              input_type: optionalString(params, 'input-type') ?? 'text/plain',
-              ...(confirmed !== undefined ? { confirmed } : {}),
-            };
-        const payload = await handler.runOperation(body);
         console.log(JSON.stringify(payload, null, 2));
         break;
       }
