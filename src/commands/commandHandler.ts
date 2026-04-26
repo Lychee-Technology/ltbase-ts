@@ -30,7 +30,6 @@ export interface ListObjectsOptions {
 
 
 export interface ListNotesOptions extends ListObjectsOptions {
-  ownerId?: string;
   schemaName?: string;
   summary?: string;
 }
@@ -161,38 +160,28 @@ export class CommandHandler {
     return response.json();
   }
 
-  async getNote(ownerId: string, noteId: string) {
-    const response = await this.client.get(`/api/ai/v1/notes/${noteId}`, { owner_id: ownerId });
+  async getNote(noteId: string) {
+    const response = await this.client.get(`/api/ai/v1/notes/${noteId}`);
     this.assertSuccess(response, 'Failed to get note');
     return response.json();
   }
 
-  async getNoteModelSync(ownerId: string, noteId: string) {
-    const response = await this.client.get(
-      `/api/ai/v1/notes/${encodeURIComponent(noteId)}/model_sync`,
-      { owner_id: ownerId },
-    );
+  async getNoteModelSync(noteId: string) {
+    const response = await this.client.get(`/api/ai/v1/notes/${encodeURIComponent(noteId)}/model_sync`);
     this.assertSuccess(response, 'Failed to get note model sync status');
     return response.json();
   }
 
-  async retryNoteModelSync(ownerId: string, noteId: string) {
+  async retryNoteModelSync(noteId: string) {
     const response = await this.client.request({
       method: 'POST',
       path: `/api/ai/v1/notes/${encodeURIComponent(noteId)}/model_sync`,
-      queryParams: { owner_id: ownerId },
     });
     this.assertSuccess(response, 'Failed to retry note model sync');
     return response.json();
   }
 
   async listNotes(options: ListNotesOptions = {}) {
-    if (!options.ownerId) {
-      throw new Error('owner_id is required for listNotes');
-    }
-    if (options.schemaName) {
-      throw new Error('schema_name is not supported by current data plane implementation');
-    }
     if (options.itemsPerPage !== undefined && options.itemsPerPage > 100) {
       throw new Error('items_per_page must be <= 100');
     }
@@ -200,8 +189,8 @@ export class CommandHandler {
     const params: QueryParams = {};
     if (options.page !== undefined) params.page = options.page;
     if (options.itemsPerPage !== undefined) params.items_per_page = options.itemsPerPage;
+    if (options.schemaName) params.schema_name = options.schemaName;
     if (options.summary) params.summary = options.summary;
-    params.owner_id = options.ownerId;
 
     const response = await this.client.get('/api/ai/v1/notes', params);
     this.assertSuccess(response, 'Failed to list notes');
@@ -236,8 +225,8 @@ export class CommandHandler {
     return response.json();
   }
 
-  async deleteNote(noteId: string, ownerId: string) {
-    const response = await this.client.delete(`/api/ai/v1/notes/${noteId}`, { owner_id: ownerId });
+  async deleteNote(noteId: string) {
+    const response = await this.client.delete(`/api/ai/v1/notes/${noteId}`);
     this.assertSuccess(response, 'Failed to delete note');
     return response.json();
   }
@@ -431,44 +420,35 @@ export class CommandHandler {
     return response.json();
   }
 
-  async getSession(sessionId: string, ownerId: string) {
-    const response = await this.client.get(
-      `/api/ai/v1/sessions/${encodeURIComponent(sessionId)}`,
-      { owner_id: ownerId },
-    );
+  async getSession(sessionId: string) {
+    const response = await this.client.get(`/api/ai/v1/sessions/${encodeURIComponent(sessionId)}`);
     this.assertSuccess(response, 'Failed to get session');
     return response.json();
   }
 
   async sendSessionMessage(
     sessionId: string,
-    ownerId: string,
     body: SessionMessageRequest | Record<string, unknown>,
   ) {
     const response = await this.client.request({
       method: 'POST',
       path: `/api/ai/v1/sessions/${encodeURIComponent(sessionId)}/messages`,
-      queryParams: { owner_id: ownerId },
       body,
     });
     this.assertSuccess(response, 'Failed to send session message');
     return response.json();
   }
 
-  async listSessionMessages(sessionId: string, ownerId: string) {
-    const response = await this.client.get(
-      `/api/ai/v1/sessions/${encodeURIComponent(sessionId)}/messages`,
-      { owner_id: ownerId },
-    );
+  async listSessionMessages(sessionId: string) {
+    const response = await this.client.get(`/api/ai/v1/sessions/${encodeURIComponent(sessionId)}/messages`);
     this.assertSuccess(response, 'Failed to list session messages');
     return response.json();
   }
 
-  async runOperation(ownerId: string, body: SessionMessageRequest | Record<string, unknown>) {
+  async runOperation(body: SessionMessageRequest | Record<string, unknown>) {
     const response = await this.client.request({
       method: 'POST',
       path: '/api/ai/v1/operations',
-      queryParams: { owner_id: ownerId },
       body,
     });
     this.assertSuccess(response, 'Failed to run operation');

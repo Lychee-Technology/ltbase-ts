@@ -35,10 +35,10 @@ const note = await commands.createNote({
   data: 'My first note',
 });
 
-const listed = await commands.listNotes({ ownerId: 'user123', page: 1, itemsPerPage: 10 });
-const fetched = await commands.getNote('user123', note?.note_id);
+const listed = await commands.listNotes({ page: 1, itemsPerPage: 10, schemaName: 'log' });
+const fetched = await commands.getNote(note?.note_id);
 await commands.updateNote(note?.note_id, 'Updated summary', 'user123');
-await commands.deleteNote(note?.note_id, 'user123');
+await commands.deleteNote(note?.note_id);
 ```
 
 ## CLI
@@ -65,26 +65,27 @@ Supported commands mirror the Dart client:
 - `auth-refresh --refresh-token <token> --bearer <token> [--project-id <project-id>]`
 - `auth-refresh-with-access --access-token <token> --refresh-token <token> [--project-id <project-id>]` (sends refresh token in `Authorization` header and access token in request body)
 - `create-note --owner-id <id> --type <mime> [--data text|--file path] [--role role] [--visit-id <id>]`
-- `get-note --owner-id <id> --note-id <uuid>`
-- `get-note-model-sync --owner-id <id> --note-id <uuid>`
-- `retry-note-model-sync --owner-id <id> --note-id <uuid>`
+- `get-note --note-id <uuid>`
+- `get-note-model-sync --note-id <uuid>`
+- `retry-note-model-sync --note-id <uuid>`
 - `list-leads [--page N] [--items-per-page N] [--order-by field:asc|desc]`
-- `list-notes --owner-id <id> [--page N] [--items-per-page N] [--summary text]`
+- `list-notes [--page N] [--items-per-page N] [--summary text] [--schema-name <name>]`
 - `update-lead --lead-id <uuid> --file <path-to-json>`
 - `update-note --note-id <uuid> --summary <text> [--owner-id <id>]`
-- `delete-note --note-id <uuid> --owner-id <id>`
+- `delete-note --note-id <uuid>`
 - `delete-visit --visit-row-id <uuid>`
 - `search --schemas <lead,visit,...> --q <text> [--page N] [--page-size N]`
 - `advanced-query --file <path-to-json>`
 - `create-session --owner-id <id> [--session-id <id>] [--file <path-to-json>]`
-- `get-session --session-id <id> --owner-id <id>`
-- `send-session-message --session-id <id> --owner-id <id> [--file <path-to-json>|--user-input <text> [--input-type <mime>] [--confirmed <true|false>]]`
-- `list-session-messages --session-id <id> --owner-id <id>`
-- `run-operation --owner-id <id> [--file <path-to-json>|--user-input <text> [--input-type <mime>] [--confirmed <true|false>]]`
+- `get-session --session-id <id>`
+- `send-session-message --session-id <id> [--file <path-to-json>|--user-input <text> [--input-type <mime>] [--confirmed <true|false>]]`
+- `list-session-messages --session-id <id>`
+- `run-operation [--file <path-to-json>|--user-input <text> [--input-type <mime>] [--confirmed <true|false>]]`
 
 Notes API alignment with current data plane implementation:
-- `DELETE /api/ai/v1/notes/{note_id}` requires `owner_id` query param
-- `schema_name` filter is currently not supported on list-notes
+- Note read/delete operations derive ownership from JWT claims instead of `owner_id` query params
+- CRUD-agent session and operation ownership are derived from JWT claims instead of `owner_id` query params
+- `list-notes` supports `schema_name`
 - `create-note` sends one default `log` model when `models` is not provided, with runtime `id/visitId` and `${note.*}` template bindings
 
 ## Token-based E2E script

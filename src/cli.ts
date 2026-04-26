@@ -217,19 +217,19 @@ Commands:
   delete-visit           --visit-row-id <uuid>
   list-logs              [--log-id <id>] [--lead-id <id>] [--visit-id <id>] [--owner-id <id>] [--page N] [--items-per-page N]
   create-note            --owner-id <id> --type <mime> [--data <text>|--file <path>] [--role <role>] [--visit-id <id>]
-  get-note               --owner-id <id> --note-id <uuid>
-  get-note-model-sync    --owner-id <id> --note-id <uuid>
-  retry-note-model-sync  --owner-id <id> --note-id <uuid>
-  list-notes             --owner-id <id> [--page N] [--items-per-page N] [--summary text]
+  get-note               --note-id <uuid>
+  get-note-model-sync    --note-id <uuid>
+  retry-note-model-sync  --note-id <uuid>
+  list-notes             [--page N] [--items-per-page N] [--summary text] [--schema-name <name>]
   update-note            --note-id <uuid> --summary <text> [--owner-id <id>]
-  delete-note            --note-id <uuid> --owner-id <id>
+  delete-note            --note-id <uuid>
   search                 --schemas <lead,visit,...> --q <text> [--page N] [--page-size N]
   advanced-query         --file <path-to-json>
   create-session         --owner-id <id> [--session-id <id>] [--file <path-to-json>]
-  get-session            --session-id <id> --owner-id <id>
-  send-session-message   --session-id <id> --owner-id <id> [--file <path-to-json>|--user-input <text> [--input-type <mime>] [--confirmed <true|false>]]
-  list-session-messages  --session-id <id> --owner-id <id>
-  run-operation          --owner-id <id> [--file <path-to-json>|--user-input <text> [--input-type <mime>] [--confirmed <true|false>]]
+  get-session            --session-id <id>
+  send-session-message   --session-id <id> [--file <path-to-json>|--user-input <text> [--input-type <mime>] [--confirmed <true|false>]]
+  list-session-messages  --session-id <id>
+  run-operation          [--file <path-to-json>|--user-input <text> [--input-type <mime>] [--confirmed <true|false>]]
 `);
 }
 
@@ -393,35 +393,26 @@ async function main() {
         break;
       }
       case 'get-note': {
-        const payload = await handler.getNote(
-          requiredString(params, 'owner-id'),
-          requiredString(params, 'note-id'),
-        );
+        const payload = await handler.getNote(requiredString(params, 'note-id'));
         console.log(JSON.stringify(payload, null, 2));
         break;
       }
       case 'get-note-model-sync': {
-        const payload = await handler.getNoteModelSync(
-          requiredString(params, 'owner-id'),
-          requiredString(params, 'note-id'),
-        );
+        const payload = await handler.getNoteModelSync(requiredString(params, 'note-id'));
         console.log(JSON.stringify(payload, null, 2));
         break;
       }
       case 'retry-note-model-sync': {
-        const payload = await handler.retryNoteModelSync(
-          requiredString(params, 'owner-id'),
-          requiredString(params, 'note-id'),
-        );
+        const payload = await handler.retryNoteModelSync(requiredString(params, 'note-id'));
         console.log(JSON.stringify(payload, null, 2));
         break;
       }
       case 'list-notes': {
         const payload = await handler.listNotes({
-          ownerId: requiredString(params, 'owner-id'),
           page: parseNumberParam(params, 'page'),
           itemsPerPage: parseNumberParam(params, 'items-per-page'),
           summary: optionalString(params, 'summary'),
+          schemaName: optionalString(params, 'schema-name'),
         });
         console.log(JSON.stringify(payload, null, 2));
         break;
@@ -560,8 +551,7 @@ async function main() {
       case 'delete-note': {
         const noteId = optionalString(params, 'note-id') ?? optionalString(params, '_');
         if (!noteId) throw new Error('Missing --note-id');
-        const ownerId = requiredString(params, 'owner-id');
-        const payload = await handler.deleteNote(noteId.trim(), ownerId);
+        const payload = await handler.deleteNote(noteId.trim());
         console.log('✓ Note deleted');
         console.log(JSON.stringify(payload, null, 2));
         break;
@@ -599,16 +589,12 @@ async function main() {
         break;
       }
       case 'get-session': {
-        const payload = await handler.getSession(
-          requiredString(params, 'session-id'),
-          requiredString(params, 'owner-id'),
-        );
+        const payload = await handler.getSession(requiredString(params, 'session-id'));
         console.log(JSON.stringify(payload, null, 2));
         break;
       }
       case 'send-session-message': {
         const sessionId = requiredString(params, 'session-id');
-        const ownerId = requiredString(params, 'owner-id');
         const filePath = optionalString(params, 'file');
         const confirmed = optionalBoolean(params, 'confirmed');
         const body = filePath
@@ -618,20 +604,16 @@ async function main() {
               input_type: optionalString(params, 'input-type') ?? 'text/plain',
               ...(confirmed !== undefined ? { confirmed } : {}),
             };
-        const payload = await handler.sendSessionMessage(sessionId, ownerId, body);
+        const payload = await handler.sendSessionMessage(sessionId, body);
         console.log(JSON.stringify(payload, null, 2));
         break;
       }
       case 'list-session-messages': {
-        const payload = await handler.listSessionMessages(
-          requiredString(params, 'session-id'),
-          requiredString(params, 'owner-id'),
-        );
+        const payload = await handler.listSessionMessages(requiredString(params, 'session-id'));
         console.log(JSON.stringify(payload, null, 2));
         break;
       }
       case 'run-operation': {
-        const ownerId = requiredString(params, 'owner-id');
         const filePath = optionalString(params, 'file');
         const confirmed = optionalBoolean(params, 'confirmed');
         const body = filePath
@@ -641,7 +623,7 @@ async function main() {
               input_type: optionalString(params, 'input-type') ?? 'text/plain',
               ...(confirmed !== undefined ? { confirmed } : {}),
             };
-        const payload = await handler.runOperation(ownerId, body);
+        const payload = await handler.runOperation(body);
         console.log(JSON.stringify(payload, null, 2));
         break;
       }

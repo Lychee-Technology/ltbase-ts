@@ -785,7 +785,6 @@ async function runE2E(options: E2EOptions): Promise<void> {
       path: '/api/ai/v1/notes',
       bearerToken: dataApiAccessToken,
       queryParams: {
-        owner_id: options.ownerId,
         page: 1,
         items_per_page: 20,
       },
@@ -1135,9 +1134,6 @@ async function runE2E(options: E2EOptions): Promise<void> {
         method: 'DELETE',
         path: `/api/ai/v1/notes/${encodeURIComponent(noteId)}`,
         bearerToken: dataApiAccessToken,
-        queryParams: {
-          owner_id: options.ownerId,
-        },
       });
       assert2xx(deleteResult, 'delete note');
       noteIdForCleanup = null;
@@ -1202,9 +1198,6 @@ async function runE2E(options: E2EOptions): Promise<void> {
           method: 'DELETE',
           path: `/api/ai/v1/notes/${encodeURIComponent(noteIdForCleanup)}`,
           bearerToken: dataApiAccessToken,
-          queryParams: {
-            owner_id: options.ownerId,
-          },
         });
         assert2xx(cleanupResult, 'cleanup delete note');
         console.log('[cleanup] done');
