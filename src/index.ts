@@ -6,6 +6,7 @@ export {
   AuthBindContext,
   AuthBindRequest,
   AuthBindResponse,
+  AuthRefreshOptions,
   AuthServiceClientOptions,
   AuthRevokeResponse,
   AuthHealthResponse,
@@ -15,7 +16,10 @@ export {
   CommandHandler,
   CreateActivityOptions,
   CreateNoteOptions,
+  CreateSessionRequest,
   ListLeadsOptions,
   ListNotesOptions,
+  SearchOptions,
+  SessionMessageRequest,
   UpdateLeadOptions,
 } from './commands/commandHandler';

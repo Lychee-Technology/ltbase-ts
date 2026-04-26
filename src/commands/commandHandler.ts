@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
 import { ApiClient, ApiResponse, QueryParams } from '../api/client';
 
 export interface CreateActivityOptions {
@@ -18,7 +19,8 @@ export interface CreateNoteOptions {
   data?: string;
   filePath?: string;
   role?: string;
-  models: unknown[];
+  visitId?: string;
+  models?: unknown[];
 }
 
 export interface ListObjectsOptions {
@@ -28,7 +30,6 @@ export interface ListObjectsOptions {
 
 
 export interface ListNotesOptions extends ListObjectsOptions {
-  ownerId?: string;
   schemaName?: string;
   summary?: string;
 }
@@ -92,6 +93,28 @@ export interface ListLogsOptions extends ListObjectsOptions {
   ownerId?: string;
 }
 
+export interface SearchOptions {
+  page?: number;
+  pageSize?: number;
+}
+
+export interface CreateSessionRequest {
+  session_id?: string;
+  owner_id: string;
+  user_preferences?: Record<string, unknown>;
+  attributes?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+export interface SessionMessageRequest {
+  user_input: string;
+  input_type?: string;
+  confirmed?: boolean;
+  context?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
 export class CommandHandler {
   private readonly client: ApiClient;
 
@@ -114,15 +137,22 @@ export class CommandHandler {
   }
 
   async createNote(options: CreateNoteOptions) {
-    const { ownerId, type, data, filePath, role } = options;
+    const { ownerId, type, data, filePath, role, visitId } = options;
+    if (!(type.startsWith('text/') || type.startsWith('audio/') || type.startsWith('image/'))) {
+      throw new Error('Invalid note type. Must start with text/, audio/, or image/');
+    }
+    if (options.models && options.models.length > 1) {
+      throw new Error('models supports at most one model in current data plane implementation');
+    }
 
     const noteData = await this.loadNoteData({ type, data, filePath });
+    const models = options.models ?? this.buildDefaultLogModels(visitId);
     const body = {
       owner_id: ownerId,
       type,
       data: noteData,
       role: role ?? 'real_estate',
-      models: options.models,
+      models,
     };
 
     const response = await this.client.post('/api/ai/v1/notes', body);
@@ -130,19 +160,37 @@ export class CommandHandler {
     return response.json();
   }
 
-  async getNote(ownerId: string, noteId: string) {
-    const response = await this.client.get(`/api/ai/v1/notes/${noteId}`, { owner_id: ownerId });
+  async getNote(noteId: string) {
+    const response = await this.client.get(`/api/ai/v1/notes/${noteId}`);
     this.assertSuccess(response, 'Failed to get note');
     return response.json();
   }
 
+  async getNoteModelSync(noteId: string) {
+    const response = await this.client.get(`/api/ai/v1/notes/${encodeURIComponent(noteId)}/model_sync`);
+    this.assertSuccess(response, 'Failed to get note model sync status');
+    return response.json();
+  }
+
+  async retryNoteModelSync(noteId: string) {
+    const response = await this.client.request({
+      method: 'POST',
+      path: `/api/ai/v1/notes/${encodeURIComponent(noteId)}/model_sync`,
+    });
+    this.assertSuccess(response, 'Failed to retry note model sync');
+    return response.json();
+  }
+
   async listNotes(options: ListNotesOptions = {}) {
+    if (options.itemsPerPage !== undefined && options.itemsPerPage > 100) {
+      throw new Error('items_per_page must be <= 100');
+    }
+
     const params: QueryParams = {};
     if (options.page !== undefined) params.page = options.page;
     if (options.itemsPerPage !== undefined) params.items_per_page = options.itemsPerPage;
     if (options.schemaName) params.schema_name = options.schemaName;
     if (options.summary) params.summary = options.summary;
-    params.owner_id = options.ownerId;
 
     const response = await this.client.get('/api/ai/v1/notes', params);
     this.assertSuccess(response, 'Failed to list notes');
@@ -162,13 +210,16 @@ export class CommandHandler {
   }
 
   async getLead(leadId: string) {
-    const response = await this.client.get(`/api/v1/lead?id=${leadId}`);
+    const response = await this.client.get(`/api/v1/lead/${encodeURIComponent(leadId)}`);
     this.assertSuccess(response, 'Failed to get lead');
     return response.json();
   }
 
-  async updateNote(ownerId: string, noteId: string, summary: string) {
-    const body = { owner_id: ownerId, summary };
+  async updateNote(noteId: string, summary: string, ownerId?: string) {
+    const body = {
+      summary,
+      ...(ownerId ? { owner_id: ownerId } : {}),
+    };
     const response = await this.client.put(`/api/ai/v1/notes/${noteId}`, body);
     this.assertSuccess(response, 'Failed to update note');
     return response.json();
@@ -189,6 +240,32 @@ export class CommandHandler {
 
     const response = await this.client.get('/api/v1/activity', params);
     this.assertSuccess(response, 'Failed to list activities');
+    return response.json();
+  }
+
+  async search(schemas: string[], q: string, options: SearchOptions = {}) {
+    if (schemas.length === 0) {
+      throw new Error('schemas is required for search');
+    }
+    if (!q) {
+      throw new Error('q is required for search');
+    }
+
+    const params: QueryParams = {
+      schemas: schemas.join(','),
+      q,
+    };
+    if (options.page !== undefined) params.page = options.page;
+    if (options.pageSize !== undefined) params.page_size = options.pageSize;
+
+    const response = await this.client.get('/api/v1/search', params);
+    this.assertSuccess(response, 'Failed to search');
+    return response.json();
+  }
+
+  async advancedQuery(body: unknown) {
+    const response = await this.client.post('/api/v1/advanced_query', body);
+    this.assertSuccess(response, 'Failed to run advanced query');
     return response.json();
   }
 
@@ -259,7 +336,7 @@ export class CommandHandler {
     if (options.itemsPerPage !== undefined) params.items_per_page = options.itemsPerPage;
     if (options.leadId) params.leadId = options.leadId;
     if (options.userId) params.userId = options.userId;
-    if (options.propertyId) params.property_id = options.propertyId;
+    if (options.propertyId) params.propertyId = options.propertyId;
 
     const response = await this.client.get('/api/v1/visit', params);
     this.assertSuccess(response, 'Failed to list visits');
@@ -337,6 +414,47 @@ export class CommandHandler {
     return response.json();
   }
 
+  async createSession(body: CreateSessionRequest) {
+    const response = await this.client.post('/api/ai/v1/sessions', body);
+    this.assertSuccess(response, 'Failed to create session');
+    return response.json();
+  }
+
+  async getSession(sessionId: string) {
+    const response = await this.client.get(`/api/ai/v1/sessions/${encodeURIComponent(sessionId)}`);
+    this.assertSuccess(response, 'Failed to get session');
+    return response.json();
+  }
+
+  async sendSessionMessage(
+    sessionId: string,
+    body: SessionMessageRequest | Record<string, unknown>,
+  ) {
+    const response = await this.client.request({
+      method: 'POST',
+      path: `/api/ai/v1/sessions/${encodeURIComponent(sessionId)}/messages`,
+      body,
+    });
+    this.assertSuccess(response, 'Failed to send session message');
+    return response.json();
+  }
+
+  async listSessionMessages(sessionId: string) {
+    const response = await this.client.get(`/api/ai/v1/sessions/${encodeURIComponent(sessionId)}/messages`);
+    this.assertSuccess(response, 'Failed to list session messages');
+    return response.json();
+  }
+
+  async runOperation(body: SessionMessageRequest | Record<string, unknown>) {
+    const response = await this.client.request({
+      method: 'POST',
+      path: '/api/ai/v1/operations',
+      body,
+    });
+    this.assertSuccess(response, 'Failed to run operation');
+    return response.json();
+  }
+
   async updateLead(options: UpdateLeadOptions) {
     const { leadId, filePath } = options;
 
@@ -384,5 +502,29 @@ export class CommandHandler {
     }
 
     throw new Error('Either data or filePath must be provided');
+  }
+
+  private buildDefaultLogModels(visitId?: string): unknown[] {
+    const resolvedVisitId = visitId ?? randomUUID();
+    const noteTemplateData = {
+      noteId: '${note.note_id}',
+      ownerId: '${note.owner_id}',
+      summary: '${note.summary}',
+      type: '${note.type}',
+      data: '${note.data}',
+      createdAt: '${note.created_at}',
+      updatedAt: '${note.updated_at}',
+    };
+
+    return [
+      {
+        type: 'log',
+        data: {
+          id: randomUUID(),
+          visitId: resolvedVisitId,
+          ...noteTemplateData,
+        },
+      },
+    ];
   }
 }

@@ -110,8 +110,8 @@ export class ApiClient {
     return this.request({ method: 'PUT', path, body });
   }
 
-  delete(path: string): Promise<ApiResponse> {
-    return this.request({ method: 'DELETE', path });
+  delete(path: string, queryParams?: QueryParams): Promise<ApiResponse> {
+    return this.request({ method: 'DELETE', path, queryParams });
   }
 
   private buildQueryString(params?: QueryParams): string {

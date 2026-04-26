@@ -21,6 +21,10 @@ export interface AuthBindRequest {
 
 export type AuthBindResponse = AuthTokenPairResponse;
 
+export interface AuthRefreshOptions {
+  project_id?: string;
+}
+
 export interface AuthRevokeResponse {
   status: string;
 }
@@ -60,15 +64,17 @@ export class AuthServiceClient {
   async health(bearerToken: string): Promise<AuthHealthResponse> {
     return this.requestJson<AuthHealthResponse>({
       method: 'GET',
-      path: '/auth/health',
+      path: '/api/v1/auth/health',
       bearerToken,
     });
   }
 
-  async jwks(): Promise<unknown> {
+  async jwks(bearerToken: string): Promise<unknown> {
+    const issuer = this.extractIssuerFromJwt(bearerToken);
+    const jwksUrl = this.buildJwksUrlFromIssuer(issuer);
     return this.requestJson<unknown>({
       method: 'GET',
-      path: '/auth/jwks.json',
+      absoluteUrl: jwksUrl,
     });
   }
 
@@ -116,12 +122,37 @@ export class AuthServiceClient {
     return this.bind(provider, body, idToken);
   }
 
-  async refresh(refreshToken: string, bearerToken: string): Promise<AuthTokenPairResponse> {
+  async refresh(
+    refreshToken: string,
+    bearerToken: string,
+    options?: AuthRefreshOptions,
+  ): Promise<AuthTokenPairResponse> {
+    const body: Record<string, string> = { refresh_token: refreshToken };
+    if (options?.project_id) {
+      body.project_id = options.project_id;
+    }
     return this.requestJson<AuthTokenPairResponse>({
       method: 'POST',
       path: '/auth/refresh',
       bearerToken,
-      body: { refresh_token: refreshToken },
+      body,
+    });
+  }
+
+  async refreshWithAccessToken(
+    accessToken: string,
+    refreshToken: string,
+    options?: AuthRefreshOptions,
+  ): Promise<AuthTokenPairResponse> {
+    const body: Record<string, string> = { access_token: accessToken };
+    if (options?.project_id) {
+      body.project_id = options.project_id;
+    }
+    return this.requestJson<AuthTokenPairResponse>({
+      method: 'POST',
+      path: '/api/v1/auth/refresh',
+      bearerToken: refreshToken,
+      body,
     });
   }
 
@@ -136,12 +167,17 @@ export class AuthServiceClient {
 
   private async requestJson<T>(options: {
     method: string;
-    path: string;
+    path?: string;
+    absoluteUrl?: string;
     bearerToken?: string;
     body?: unknown;
   }): Promise<T> {
-    const { method, path, bearerToken, body } = options;
-    const url = new URL(path, this.baseUrl);
+    const { method, path, absoluteUrl, bearerToken, body } = options;
+    const requestUrl = absoluteUrl ?? (path ? new URL(path, this.baseUrl).toString() : null);
+    if (!requestUrl) {
+      throw new Error('requestJson requires either path or absoluteUrl');
+    }
+    const url = new URL(requestUrl);
     const bodyString = body === undefined ? undefined : JSON.stringify(body);
 
     if (this.verbose) {
@@ -203,5 +239,50 @@ export class AuthServiceClient {
       throw new Error(`Invalid path template: "${pathTemplate}". It must include "{provider}".`);
     }
     return pathTemplate.replace('{provider}', encodeURIComponent(provider));
+  }
+
+  private extractIssuerFromJwt(token: string): string {
+    const payload = this.decodeJwtPayload(token);
+    const issuer = payload.iss;
+    if (typeof issuer !== 'string' || issuer.trim().length === 0) {
+      throw new Error('JWT payload missing "iss" claim for auth-jwks');
+    }
+    return issuer.trim();
+  }
+
+  private decodeJwtPayload(token: string): Record<string, unknown> {
+    const parts = token.split('.');
+    if (parts.length < 2) {
+      throw new Error('Invalid JWT format');
+    }
+
+    const payload = parts[1];
+    const base64 = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, '=');
+    const decoded = Buffer.from(padded, 'base64').toString('utf8');
+
+    try {
+      const parsed = JSON.parse(decoded);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw new Error('JWT payload must be an object');
+      }
+      return parsed as Record<string, unknown>;
+    } catch (err) {
+      throw new Error(`Invalid JWT payload: ${(err as Error).message}`);
+    }
+  }
+
+  private buildJwksUrlFromIssuer(issuer: string): string {
+    const issuerUrl = new URL(issuer);
+    issuerUrl.hash = '';
+    issuerUrl.search = '';
+
+    const basePath = issuerUrl.pathname.endsWith('/')
+      ? issuerUrl.pathname.slice(0, -1)
+      : issuerUrl.pathname;
+    const jwksPath = `${basePath}/.well-known/jwks.json`.replace(/\/{2,}/g, '/');
+    issuerUrl.pathname = jwksPath;
+
+    return issuerUrl.toString();
   }
 }

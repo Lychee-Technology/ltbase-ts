@@ -7,10 +7,13 @@
   "scripts": {
     "check": "bunx --bun tsc --noEmit",
     "cli": "bun run src/cli.ts",
-    "auth-test": "bun run src/cli.ts auth-health --bearer $AUTH_BEARER"
+    "test": "bun test",
+    "auth-test": "bun run src/cli.ts auth-health --bearer $AUTH_BEARER",
+    "e2e:token": "bun run src/e2e/tokenE2E.ts"
   },
   "devDependencies": {
     "@types/node": "^24.10.1",
+    "bun-types": "^1.3.13",
     "typescript": "^5.9.3"
   }
 }
