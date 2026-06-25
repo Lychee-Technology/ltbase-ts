@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   static:
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-latest
 
     steps:
       - name: Check out repository
